@@ -18,7 +18,7 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;600&family=Gaegu:wght@700&family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&family=Space+Mono:wght@400;700&family=Syne:wght@800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet" />
     
     <title>Family Expenses and Savings</title>
     <script>
@@ -38,6 +38,24 @@
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+ <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyAYXQGOUgWp4kmXHNOQxutlgk9_xgaGncs",
+    authDomain: "my-family-app-4a728.firebaseapp.com",
+    projectId: "my-family-app-4a728",
+    storageBucket: "my-family-app-4a728.firebasestorage.app",
+    messagingSenderId: "639887651286",
+    appId: "1:639887651286:web:84bc654385db566a02b477"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+</script> 
   </body>
 </html>
-
