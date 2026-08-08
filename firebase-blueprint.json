@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "Expense": {
+      "title": "Expense",
+      "description": "Family expense records in INR (₹)",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number", "description": "Expense amount in INR (₹)" },
+        "category": { "type": "string", "description": "Category like Groceries, Utilities, etc." },
+        "paidBy": { "type": "string", "description": "Name of the family member who paid" },
+        "date": { "type": "string", "description": "Expense date YYYY-MM-DD" },
+        "notes": { "type": "string", "description": "Optional notes/description" },
+        "createdAt": { "type": "string", "description": "Timestamp ISO string" }
+      },
+      "required": ["amount", "category", "paidBy", "date"]
+    },
+    "Budget": {
+      "title": "Monthly Budget",
+      "description": "Family monthly budget setting in INR (₹)",
+      "type": "object",
+      "properties": {
+        "monthlyBudget": { "type": "number", "description": "Budget limit in INR (₹)" },
+        "month": { "type": "string", "description": "Month string YYYY-MM" }
+      },
+      "required": ["monthlyBudget", "month"]
+    },
+    "SipPlan": {
+      "title": "SIP Plan",
+      "description": "Systematic Investment Plan records including rate of return, total investment, total savings, and tenure",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Fund or stock title" },
+        "monthlyAmount": { "type": "number", "description": "Monthly SIP installment in ₹" },
+        "expectedRateOfReturn": { "type": "number", "description": "Expected rate of return % p.a." },
+        "tenureYears": { "type": "number", "description": "Investment duration in years" },
+        "completedMonths": { "type": "number", "description": "Number of installments paid" },
+        "paidBy": { "type": "string", "description": "Family member name who pays" },
+        "fundCategory": { "type": "string", "description": "Mutual Fund, Index Fund, Gold, etc." },
+        "goalName": { "type": "string", "description": "Goal name like Retirement, Education, etc." },
+        "status": { "type": "string", "description": "active, paused, completed" }
+      },
+      "required": ["title", "monthlyAmount", "paidBy"]
+    }
+
+  }
+}

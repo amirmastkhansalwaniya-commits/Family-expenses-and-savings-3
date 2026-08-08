@@ -1,0 +1,6 @@
+{
+  "name": "Family Expenses and Savings",
+  "description": "Real-time family expenses and savings tracking application with INR (₹) support, pre-configured family profiles, budget tracking, analytics, EMI tracking, and settlement features.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

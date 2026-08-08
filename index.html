@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#059669" />
+    <meta name="description" content="Smart family expense tracker, EMI calculator, SIP planner, and debt settlement manager." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Family Expenses" />
+    <meta name="application-name" content="Family Expenses" />
+    
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/app-logo.svg" />
+    <link rel="apple-touch-icon" href="/app-logo.svg" />
+    <link rel="shortcut icon" href="/app-logo.svg" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;600&family=Gaegu:wght@700&family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&family=Space+Mono:wght@400;700&family=Syne:wght@800&display=swap" rel="stylesheet" />
+    
+    <title>Family Expenses and Savings</title>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(function(reg) {
+              console.log('PWA ServiceWorker registered with scope:', reg.scope);
+            })
+            .catch(function(err) {
+              console.warn('PWA ServiceWorker registration failed:', err);
+            });
+        });
+      }
+    </script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
