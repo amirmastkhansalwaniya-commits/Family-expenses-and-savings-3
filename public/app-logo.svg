@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Metallic Dark Plate -->
+    <radialGradient id="plateGrad" cx="50%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="60%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+
+    <!-- Metallic Gold Outer Ring -->
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="30%" stop-color="#eab308"/>
+      <stop offset="70%" stop-color="#a16207"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </linearGradient>
+
+    <!-- Green Ring & Arrow Gradient -->
+    <linearGradient id="greenRing3D" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="25%" stop-color="#22c55e"/>
+      <stop offset="65%" stop-color="#15803d"/>
+      <stop offset="100%" stop-color="#052e16"/>
+    </linearGradient>
+
+    <!-- Glossy Highlight for Ring -->
+    <linearGradient id="glossGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Blue Avatar 3D -->
+    <linearGradient id="blueAvatar3D" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#93c5fd"/>
+      <stop offset="40%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+
+    <!-- Green Avatar 3D -->
+    <linearGradient id="greenAvatar3D" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a7f3d0"/>
+      <stop offset="40%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+
+    <!-- Yellow Avatar 3D -->
+    <linearGradient id="yellowAvatar3D" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="40%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#713f12"/>
+    </linearGradient>
+
+    <!-- Wallet Body 3D -->
+    <linearGradient id="wallet3D" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="40%" stop-color="#16a34a"/>
+      <stop offset="100%" stop-color="#0f5127"/>
+    </linearGradient>
+
+    <!-- Gold Coins 3D -->
+    <linearGradient id="coinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef9c3"/>
+      <stop offset="50%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#854d0e"/>
+    </linearGradient>
+
+    <!-- 3D Drop Shadows -->
+    <filter id="shadow3D" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <filter id="innerShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Dark Rounded Badge Base -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#plateGrad)" stroke="url(#goldBorder)" stroke-width="6" filter="url(#shadow3D)"/>
+
+  <!-- Subtle Inner Gloss Ring -->
+  <rect x="24" y="24" width="464" height="464" rx="88" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+
+  <!-- Main Artwork Group -->
+  <g filter="url(#innerShadow)">
+    <!-- 3D Green Circular Growth Ring with Arrow -->
+    <path d="M 120 280 A 150 150 0 1 1 380 180" fill="none" stroke="url(#greenRing3D)" stroke-width="32" stroke-linecap="round"/>
+
+    <!-- Upward Growth Arrow -->
+    <path d="M 330 140 L 410 90 L 390 170 Z" fill="url(#greenRing3D)" stroke="#14532d" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M 260 250 Q 330 210 395 100" fill="none" stroke="url(#greenRing3D)" stroke-width="24" stroke-linecap="round"/>
+
+    <!-- Document / Rupee Note behind wallet -->
+    <rect x="300" y="145" width="85" height="105" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="3" filter="url(#innerShadow)"/>
+    <!-- Rupee symbol on document -->
+    <text x="342" y="210" font-family="Arial, sans-serif" font-size="52" font-weight="900" fill="#047857" text-anchor="middle">₹</text>
+
+    <!-- Gold Coins Stack -->
+    <g filter="url(#innerShadow)">
+      <ellipse cx="395" cy="205" rx="24" ry="9" fill="url(#coinGrad)" stroke="#78350f" stroke-width="2"/>
+      <ellipse cx="395" cy="222" rx="24" ry="9" fill="url(#coinGrad)" stroke="#78350f" stroke-width="2"/>
+      <ellipse cx="395" cy="239" rx="24" ry="9" fill="url(#coinGrad)" stroke="#78350f" stroke-width="2"/>
+    </g>
+
+    <!-- 3D Green Leather Wallet -->
+    <rect x="270" y="225" width="145" height="130" rx="24" fill="url(#wallet3D)" stroke="#052e16" stroke-width="4" filter="url(#innerShadow)"/>
+    <path d="M 270 275 H 415" stroke="#052e16" stroke-width="5"/>
+    <circle cx="375" cy="302" r="10" fill="#86efac" stroke="#052e16" stroke-width="3"/>
+
+    <!-- 3D Family Members -->
+    <!-- Parent 1: Blue Avatar (Left) -->
+    <g>
+      <circle cx="165" cy="180" r="38" fill="url(#blueAvatar3D)" stroke="#1d4ed8" stroke-width="3"/>
+      <!-- Glossy Head Highlight -->
+      <circle cx="155" cy="168" r="11" fill="#ffffff" opacity="0.45"/>
+      <!-- Body -->
+      <path d="M 115 330 C 115 240, 215 240, 215 330 Z" fill="url(#blueAvatar3D)" stroke="#1d4ed8" stroke-width="3"/>
+    </g>
+
+    <!-- Parent 2: Green Avatar (Center) -->
+    <g>
+      <circle cx="245" cy="190" r="35" fill="url(#greenAvatar3D)" stroke="#047857" stroke-width="3"/>
+      <!-- Glossy Head Highlight -->
+      <circle cx="236" cy="179" r="10" fill="#ffffff" opacity="0.45"/>
+      <!-- Body -->
+      <path d="M 200 340 C 200 250, 290 250, 290 340 Z" fill="url(#greenAvatar3D)" stroke="#047857" stroke-width="3"/>
+    </g>
+
+    <!-- Child: Yellow Avatar (Front/Middle) -->
+    <g>
+      <circle cx="205" cy="255" r="26" fill="url(#yellowAvatar3D)" stroke="#713f12" stroke-width="3"/>
+      <!-- Glossy Head Highlight -->
+      <circle cx="198" cy="247" r="7" fill="#ffffff" opacity="0.55"/>
+      <!-- Body -->
+      <path d="M 170 360 C 170 300, 240 300, 240 360 Z" fill="url(#yellowAvatar3D)" stroke="#713f12" stroke-width="3"/>
+    </g>
+
+    <!-- Banner / Text below icon -->
+    <text x="256" y="405" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="30" font-weight="900" fill="#eab308" text-anchor="middle" letter-spacing="1">FAMILY EXPENSES</text>
+    <text x="256" y="440" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="28" font-weight="900" fill="#60a5fa" text-anchor="middle" letter-spacing="2">&amp; WEALTH</text>
+    <text x="256" y="468" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle" letter-spacing="3">PLAN TODAY, SECURE TOMORROW</text>
+  </g>
+</svg>
