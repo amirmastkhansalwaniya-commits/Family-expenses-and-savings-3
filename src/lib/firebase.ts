@@ -14,16 +14,21 @@ import {
   setDoc,
   getDoc,
   getDocs,
-  getDocFromServer,
   deleteField,
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
-
-// Silence non-fatal Firestore network connection warnings in iframe preview & offline states
+const firebaseConfig = {
+  apiKey: "AIzaSyAYXQGOUgWp4kmXHNOQxutlgk9_xgaGncs",
+  authDomain: "my-family-app-4a728.firebaseapp.com",
+  projectId: "my-family-app-4a728",
+  storageBucket: "my-family-app-4a728.firebasestorage.app",
+  messagingSenderId: "639887651286",
+  appId: "1:639887651286:web:84bc654385db566a02b477"
+};
+// Silence non-fatal Firestore network warnings in iframe preview & offline states
 try {
-  setLogLevel('silent');
+  setLogLevel('error');
 } catch {
   // Ignore if setLogLevel fails
 }
@@ -46,62 +51,6 @@ try {
 
 export const db = dbInstance;
 
-// Validate Connection to Firestore on boot
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firestore connection check: operating in persistent offline mode.");
-    }
-  }
-}
-testConnection();
-
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
-}
-
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: null,
-      email: null,
-      emailVerified: null,
-      isAnonymous: null,
-      tenantId: null,
-      providerInfo: []
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  return errInfo;
-}
-
 export { 
   collection, 
   addDoc, 
@@ -118,6 +67,3 @@ export {
   Timestamp,
   serverTimestamp
 };
-
-
-
