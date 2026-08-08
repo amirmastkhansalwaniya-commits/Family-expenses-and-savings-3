@@ -1,0 +1,297 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #F8F7F4;
+  --ink: #1B1A17;
+  --accent: #B8860B;
+  --ink-faint: rgba(27, 26, 23, 0.1);
+  --danger: #B91C1C;
+  --success: #15803D;
+  --warning: #D97706;
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+  .dark body, html.dark body {
+    background-color: #121110;
+    color: #F8F7F4;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Cormorant Garamond', 'Inter', serif;
+  }
+  .font-garamond {
+    font-family: 'Cormorant Garamond', serif;
+  }
+  .font-space-mono {
+    font-family: 'Space Mono', monospace;
+  }
+  .font-gaegu {
+    font-family: 'Gaegu', cursive, sans-serif;
+  }
+  .font-syne {
+    font-family: 'Syne', sans-serif;
+  }
+  .font-jetbrains {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 3D Unique Typography & Emblem Styling */
+.title-3d-normal-light,
+.title-3d-dark-green-light {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #b45309; /* Dark Yellow / Amber */
+  text-shadow: none;
+  filter: none;
+  position: relative;
+}
+
+.title-3d-normal-dark,
+.title-3d-dark-green-dark {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #eab308; /* Dark Yellow in Dark Mode */
+  text-shadow: none;
+  filter: none;
+  position: relative;
+}
+.title-3d-red-light {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #dc2626 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 1px 0px rgba(255, 255, 255, 0.9)) drop-shadow(0px 3px 4px rgba(127, 29, 29, 0.35));
+  position: relative;
+}
+
+.title-3d-red-dark {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  background: linear-gradient(135deg, #fca5a5 0%, #f87171 45%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 2px 0px rgba(15, 23, 42, 0.9)) drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.6));
+  position: relative;
+}
+
+.title-3d-light {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  background: linear-gradient(135deg, #14532d 0%, #16a34a 40%, #15803d 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 1px 0px rgba(255, 255, 255, 0.9)) drop-shadow(0px 3px 4px rgba(22, 101, 52, 0.25));
+  position: relative;
+}
+
+.title-3d-dark {
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  background: linear-gradient(135deg, #86efac 0%, #4ade80 45%, #10b981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 2px 0px rgba(15, 23, 42, 0.9)) drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.5));
+  position: relative;
+}
+
+.box-3d-icon {
+  box-shadow: 
+    inset 0 1px 2px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.4),
+    0 6px 12px -2px rgba(79, 70, 229, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.15);
+  transform: perspective(600px) rotateY(-6deg) rotateX(6deg);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.box-3d-icon:hover {
+  transform: perspective(600px) rotateY(0deg) rotateX(0deg) scale(1.05);
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide everything on screen by default when printing */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make printable-area and its children visible */
+  .printable-area,
+  .printable-area * {
+    visibility: visible !important;
+  }
+
+  /* Position printable-area to cover the entire page */
+  .printable-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Explicitly hide non-printable UI like dark modal headers, buttons, backdrops */
+  .no-print,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+
+/* Continuous Running Ticker Marquee */
+@keyframes tickerLoop {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-ticker {
+  display: flex;
+  width: max-content;
+  animation: tickerLoop 28s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+/* Global App Typography & Letter Styling Controls */
+html[data-letter-weight="thin"] body,
+html[data-letter-weight="thin"] body * {
+  font-weight: 100 !important;
+}
+
+html[data-letter-weight="extra-light"] body,
+html[data-letter-weight="extra-light"] body * {
+  font-weight: 200 !important;
+}
+
+html[data-letter-weight="light"] body,
+html[data-letter-weight="light"] body * {
+  font-weight: 300 !important;
+}
+
+html[data-letter-weight="normal"] body,
+html[data-letter-weight="normal"] body * {
+  font-weight: 400 !important;
+}
+
+html[data-letter-weight="medium"] body,
+html[data-letter-weight="medium"] body * {
+  font-weight: 500 !important;
+}
+
+html[data-letter-weight="semibold"] body,
+html[data-letter-weight="semibold"] body * {
+  font-weight: 600 !important;
+}
+
+html[data-letter-weight="bold"] body,
+html[data-letter-weight="bold"] body * {
+  font-weight: 700 !important;
+}
+
+html[data-letter-weight="extrabold"] body,
+html[data-letter-weight="extrabold"] body * {
+  font-weight: 800 !important;
+}
+
+html[data-letter-weight="black"] body,
+html[data-letter-weight="black"] body * {
+  font-weight: 900 !important;
+}
+
+/* Letter Case / Transform Options */
+html[data-letter-case="uppercase"] body,
+html[data-letter-case="uppercase"] body * {
+  text-transform: uppercase !important;
+}
+
+html[data-letter-case="lowercase"] body,
+html[data-letter-case="lowercase"] body * {
+  text-transform: lowercase !important;
+}
+
+html[data-letter-case="capitalize"] body,
+html[data-letter-case="capitalize"] body * {
+  text-transform: capitalize !important;
+}
+
+/* Letter Spacing Options */
+html[data-letter-spacing="tight"] body,
+html[data-letter-spacing="tight"] body * {
+  letter-spacing: -0.04em !important;
+}
+
+html[data-letter-spacing="wide"] body,
+html[data-letter-spacing="wide"] body * {
+  letter-spacing: 0.06em !important;
+}
+
+html[data-letter-spacing="extrawide"] body,
+html[data-letter-spacing="extrawide"] body * {
+  letter-spacing: 0.12em !important;
+}
+
+/* Font Family Overrides */
+html[data-letter-font="inter"] body,
+html[data-letter-font="inter"] body * {
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+
+html[data-letter-font="garamond"] body,
+html[data-letter-font="garamond"] body * {
+  font-family: 'Cormorant Garamond', Georgia, serif !important;
+}
+
+html[data-letter-font="mono"] body,
+html[data-letter-font="mono"] body * {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace !important;
+}
+
+html[data-letter-font="gaegu"] body,
+html[data-letter-font="gaegu"] body * {
+  font-family: 'Gaegu', cursive, sans-serif !important;
+}
+
+html[data-letter-font="syne"] body,
+html[data-letter-font="syne"] body * {
+  font-family: 'Syne', sans-serif !important;
+}
+
