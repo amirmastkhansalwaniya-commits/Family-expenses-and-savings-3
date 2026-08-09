@@ -38,6 +38,7 @@ import { DashboardView } from './components/DashboardView';
 import { TransactionHistoryLog } from './components/TransactionHistoryLog';
 import { AndroidGuideView } from './components/AndroidGuideView';
 import { AddExpenseModal } from './components/AddExpenseModal';
+import { BankTransferModal } from './components/BankTransferModal';
 import { EmiTrackerView } from './components/EmiTrackerView';
 import { SipTrackerView } from './components/SipTrackerView';
 import { DebtTrackerView } from './components/DebtTrackerView';
@@ -439,6 +440,7 @@ export default function App() {
   const [isManageMembersModalOpen, setIsManageMembersModalOpen] = useState<boolean>(false);
   const [isWebAppLinkModalOpen, setIsWebAppLinkModalOpen] = useState<boolean>(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+  const [isBankTransferModalOpen, setIsBankTransferModalOpen] = useState<boolean>(false);
 
   // Firestore Real-time Listener for Member Configs & Family Members List
   useEffect(() => {
@@ -1870,6 +1872,7 @@ export default function App() {
           memberConfigs={memberConfigs}
           onOpenManageMembers={() => setIsManageMembersModalOpen(true)}
           onOpenExportImport={() => setIsExportImportModalOpen(true)}
+          onOpenBankTransfer={() => setIsBankTransferModalOpen(true)}
           emis={emis}
           language={language}
         />
@@ -1900,6 +1903,7 @@ export default function App() {
               onDeleteEmi={handleDeleteEmi}
               memberBankAmounts={memberBankAmounts}
               onUpdateBankAmount={handleUpdateMemberBankAmount}
+              onOpenBankTransfer={() => setIsBankTransferModalOpen(true)}
               onNavigateTab={setActiveTab}
               onSelectMember={handleSelectMember}
               language={language}
@@ -2142,6 +2146,20 @@ export default function App() {
         onOpenWebLinkModal={() => setIsWebAppLinkModalOpen(true)}
         brandingSettings={brandingSettings}
         onUpdateBrandingSettings={handleUpdateBrandingSettings}
+      />
+
+      {/* Bank to Bank Transfer Modal */}
+      <BankTransferModal
+        isOpen={isBankTransferModalOpen}
+        onClose={() => setIsBankTransferModalOpen(false)}
+        familyMembers={familyMembers}
+        memberConfigs={memberConfigs}
+        memberBankAmounts={memberBankAmounts}
+        onUpdateBankAmount={handleUpdateMemberBankAmount}
+        onSaveExpense={handleSaveExpense}
+        activeMember={activeMember}
+        language={language}
+        theme={theme}
       />
 
     </div>
