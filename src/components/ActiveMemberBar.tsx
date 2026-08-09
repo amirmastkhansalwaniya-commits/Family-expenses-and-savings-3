@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { FamilyMember, FAMILY_MEMBERS, MEMBER_THEMES, MemberBankAmount, Expense, ADMIN_MEMBER, MemberCustomConfig, getMemberTheme, EmiPlan } from '../types';
-import { CheckCircle2, Landmark, Edit2, X, Check, History, Calendar, ArrowRight, Lock, ShieldAlert, UserPlus, Users, Download, Wallet } from 'lucide-react';
+import { CheckCircle2, Landmark, Edit2, X, Check, History, Calendar, ArrowRight, Lock, ShieldAlert, UserPlus, Users, Download, Wallet, ArrowRightLeft } from 'lucide-react';
 import { formatINRCompact, formatINR, formatMonthName } from '../utils/formatters';
 import { MemberAvatar } from './MemberAvatar';
 import { exportMemberDataToCSV, exportMemberDataToJSON, exportMemberDataToPDF } from '../utils/exportImport';
@@ -21,6 +21,7 @@ interface ActiveMemberBarProps {
   memberConfigs?: Record<string, MemberCustomConfig>;
   onOpenManageMembers?: () => void;
   onOpenExportImport?: () => void;
+  onOpenBankTransfer?: () => void;
   emis?: EmiPlan[];
   language?: Language;
 }
@@ -40,6 +41,7 @@ export const ActiveMemberBar: React.FC<ActiveMemberBarProps> = ({
   memberConfigs,
   onOpenManageMembers,
   onOpenExportImport,
+  onOpenBankTransfer,
   emis = [],
   language = 'en',
 }) => {
@@ -215,6 +217,22 @@ export const ActiveMemberBar: React.FC<ActiveMemberBarProps> = ({
             <span className={`text-xs font-extrabold uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-400'}`}>
               {t('memberProfiles', language)}
             </span>
+
+            {onOpenBankTransfer && (
+              <button
+                type="button"
+                onClick={onOpenBankTransfer}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                  isDark
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800 hover:bg-emerald-900'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                }`}
+                title="Transfer money from one member bank account to another"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                <span>{language === 'hi' ? 'बैंक से बैंक ट्रांसफर' : 'Bank Transfer'}</span>
+              </button>
+            )}
           </div>
 
           <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-200/80 dark:border-emerald-800/80 hidden sm:inline-flex items-center gap-1">
