@@ -1584,6 +1584,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                             )}
+                            {onDeleteExpense && (
+                              <button
+                                type="button"
+                                onClick={() => onDeleteExpense(gExp.id)}
+                                className="p-1 text-rose-400 hover:text-rose-200 hover:bg-rose-950/60 rounded-lg transition-colors cursor-pointer"
+                                title="Delete this grocery record"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2916,6 +2926,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
+                              {onDeleteExpense && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteExpense(exp.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                                  title="Delete Transaction"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
