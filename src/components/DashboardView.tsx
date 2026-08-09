@@ -41,7 +41,8 @@ import {
   Sliders,
   Calculator,
   Users,
-  Trash2
+  Trash2,
+  ArrowRightLeft
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -125,6 +126,7 @@ interface DashboardViewProps {
   onDeleteEmi?: (emiId: string) => Promise<void> | void;
   memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
   onUpdateBankAmount?: (member: FamilyMember, updates: Partial<MemberBankAmount>) => Promise<void> | void;
+  onOpenBankTransfer?: () => void;
   onNavigateTab?: (tab: 'dashboard' | 'transactions' | 'emis' | 'android-guide') => void;
   onSelectMember?: (member: FamilyMember) => void;
   language?: Language;
@@ -202,6 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onDeleteEmi,
   memberBankAmounts,
   onUpdateBankAmount,
+  onOpenBankTransfer,
   onNavigateTab,
   onSelectMember,
   language = 'en',
@@ -1221,6 +1224,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Track pending bank transfers and UPI account amounts for each family member
             </p>
           </div>
+
+          {onOpenBankTransfer && (
+            <button
+              type="button"
+              onClick={onOpenBankTransfer}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-2xl text-xs transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer shrink-0"
+            >
+              <ArrowRightLeft className="w-4 h-4 stroke-[2.5]" />
+              <span>{language === 'hi' ? 'बैंक से बैंक ट्रांसफर' : 'Bank to Bank Transfer'}</span>
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
