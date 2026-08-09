@@ -1281,6 +1281,26 @@ export default function App() {
   // EMI CRUD Handlers
   const handleSaveEmi = async (emiData: Omit<EmiPlan, 'id'>, id?: string) => {
     if (id) {
+      // Calculate bank deduction difference on EMI update
+      const oldEmi = emis.find((e) => e.id === id);
+      const oldPaidMonths = oldEmi ? oldEmi.paidMonths : 0;
+      const oldEmiAmount = oldEmi ? oldEmi.emiAmount : 0;
+      const oldDeduction = oldPaidMonths * oldEmiAmount;
+
+      const newPaidMonths = emiData.paidMonths;
+      const newEmiAmount = emiData.emiAmount;
+      const newDeduction = newPaidMonths * newEmiAmount;
+
+      let spendingDelta = newDeduction - oldDeduction;
+      if (spendingDelta === 0 && newEmiAmount > 0) {
+        // Deduct single month EMI amount when updating EMI
+        spendingDelta = newEmiAmount;
+      }
+
+      if (spendingDelta > 0) {
+        await adjustBankForMemberSpending(emiData.paidBy, spendingDelta);
+      }
+
       const updatedEmi: EmiPlan = { ...emiData, id };
       setEmis((prev) => {
         const next = prev.map((e) => (e.id === id ? updatedEmi : e));
@@ -1310,6 +1330,13 @@ export default function App() {
     } else {
       const tempId = `emi_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newEmi: EmiPlan = { ...emiData, id: tempId };
+
+      // Deduct EMI amount from member's bank account for new EMI
+      const initialDeduction = (emiData.paidMonths > 0 ? emiData.paidMonths : 1) * emiData.emiAmount;
+      if (initialDeduction > 0) {
+        await adjustBankForMemberSpending(emiData.paidBy, initialDeduction);
+      }
+
       setEmis((prev) => {
         const next = [newEmi, ...prev];
         localStorage.setItem('family_emis_cache', JSON.stringify(next));
