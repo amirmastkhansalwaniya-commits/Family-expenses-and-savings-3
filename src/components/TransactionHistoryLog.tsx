@@ -541,6 +541,15 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                   >
                     <Edit className="w-4 h-4" />
                   </button>
+
+                  <button
+                    onClick={() => setExpenseToDelete(exp)}
+                    disabled={deletingId === exp.id}
+                    title="Delete expense"
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                  </button>
                 </div>
               </div>
 
