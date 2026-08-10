@@ -1,7 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, MEMBER_THEMES, MemberCustomConfig, getMemberTheme } from '../types';
 import { formatINR, formatDateDisplay } from '../utils/formatters';
 import { MemberAvatar } from './MemberAvatar';
+import { 
+  exportBackupJSON, 
+  exportBackupPDF, 
+  parseBackupJSON, 
+  parseExpensesCSV, 
+  parseBackupPDF, 
+  parseExpensesPDF 
+} from '../utils/exportImport';
 import { 
   Search, 
   Trash2, 
@@ -10,6 +18,7 @@ import {
   Clock,
   Printer, 
   FileSpreadsheet,
+  FileText,
   AlertCircle,
   X,
   Filter,
@@ -27,7 +36,10 @@ import {
   Film,
   Package,
   Tag,
-  CreditCard
+  CreditCard,
+  Upload,
+  Download,
+  Database
 } from 'lucide-react';
 
 const CATEGORY_UI_CONFIG: Record<string, {
@@ -61,6 +73,8 @@ interface TransactionHistoryLogProps {
   language?: Language;
   familyMembers?: string[];
   memberConfigs?: Record<string, MemberCustomConfig>;
+  onRestoreExpenses?: (restoredExpenses: Expense[]) => Promise<void> | void;
+  onOpenExportImport?: () => void;
 }
 
 export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
@@ -71,6 +85,8 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   language = 'en',
   familyMembers = FAMILY_MEMBERS,
   memberConfigs,
+  onRestoreExpenses,
+  onOpenExportImport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -81,6 +97,73 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Backup Expenses JSON
+  const handleBackupJsonLog = () => {
+    const listToExport = filtered.length > 0 ? filtered : expenses;
+    exportBackupJSON({ expenses: listToExport });
+    setExportNotice(`Backup JSON file downloaded successfully! (${listToExport.length} entries)`);
+    setTimeout(() => setExportNotice(null), 4000);
+  };
+
+  // Backup Expenses PDF
+  const handleBackupPdfLog = () => {
+    const listToExport = filtered.length > 0 ? filtered : expenses;
+    exportBackupPDF({ expenses: listToExport });
+    setExportNotice(`Backup PDF document downloaded successfully! (${listToExport.length} entries)`);
+    setTimeout(() => setExportNotice(null), 4000);
+  };
+
+  // Restore Expenses from JSON / CSV / PDF File
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      let restoredList: Expense[] = [];
+
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        const buffer = await file.arrayBuffer();
+        const backupRes = await parseBackupPDF(buffer);
+        if (backupRes.success && backupRes.data?.expenses && backupRes.data.expenses.length > 0) {
+          restoredList = backupRes.data.expenses;
+        } else {
+          const expRes = await parseExpensesPDF(buffer);
+          if (expRes.validExpenses && expRes.validExpenses.length > 0) {
+            restoredList = expRes.validExpenses as Expense[];
+          }
+        }
+      } else if (file.name.toLowerCase().endsWith('.json')) {
+        const text = await file.text();
+        const res = parseBackupJSON(text);
+        if (res && res.success && res.data && Array.isArray(res.data.expenses) && res.data.expenses.length > 0) {
+          restoredList = res.data.expenses;
+        }
+      } else if (file.name.toLowerCase().endsWith('.csv')) {
+        const text = await file.text();
+        const res = parseExpensesCSV(text);
+        if (res && Array.isArray(res.validExpenses) && res.validExpenses.length > 0) {
+          restoredList = res.validExpenses as Expense[];
+        }
+      }
+
+      if (restoredList.length > 0) {
+        if (onRestoreExpenses) {
+          await onRestoreExpenses(restoredList);
+        }
+        setExportNotice(`Successfully restored ${restoredList.length} expenses into Expense Log!`);
+        setTimeout(() => setExportNotice(null), 5000);
+      } else {
+        alert('No valid expense records were found in the selected file.');
+      }
+    } catch (err) {
+      console.error('Error reading backup file:', err);
+      alert('Failed to read or parse backup file. Please ensure it is a valid JSON, CSV, or PDF backup.');
+    }
+
+    if (e.target) e.target.value = '';
+  };
 
   // Toggle Member selection
   const toggleMember = (member: string) => {
@@ -275,6 +358,41 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                 <span>{t('resetFilters', language)}</span>
               </button>
             )}
+
+            <button
+              onClick={handleBackupJsonLog}
+              title="Backup current expense log entries to JSON file"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 rounded-2xl text-xs font-extrabold border border-indigo-200 dark:border-indigo-800 transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Backup JSON</span>
+            </button>
+
+            <button
+              onClick={handleBackupPdfLog}
+              title="Backup current expense log entries to PDF document"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 rounded-2xl text-xs font-extrabold border border-purple-200 dark:border-purple-800 transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span>Backup PDF</span>
+            </button>
+
+            <button
+              onClick={() => restoreFileInputRef.current?.click()}
+              title="Restore expense log entries from JSON, CSV, or PDF backup file"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-300 rounded-2xl text-xs font-extrabold border border-amber-200 dark:border-amber-800 transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <Upload className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span>Restore Log</span>
+            </button>
+
+            <input
+              type="file"
+              ref={restoreFileInputRef}
+              accept=".json,.csv,.pdf"
+              onChange={handleRestoreFile}
+              className="hidden"
+            />
 
             <button
               onClick={handleExportCSV}
