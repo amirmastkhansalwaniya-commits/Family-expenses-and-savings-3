@@ -98,6 +98,11 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   const [pdfErrors, setPdfErrors] = useState<string[]>([]);
   const [pdfFileName, setPdfFileName] = useState<string>('');
 
+  // Reset Tab PIN Code State
+  const [resetPin, setResetPin] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+
   const csvFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
   const pdfFileInputRef = useRef<HTMLInputElement>(null);
@@ -1214,6 +1219,85 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
               )}
             </div>
 
+          </div>
+        )}
+
+        {activeTab === 'reset' && (
+          <div className="space-y-5 mt-4">
+            <div className={`p-5 rounded-2xl border ${isDark ? 'bg-rose-950/30 border-rose-900/60' : 'bg-rose-50 border-rose-200'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 bg-rose-600 text-white rounded-2xl shadow-md shrink-0">
+                  <RotateCcw className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-rose-900 dark:text-rose-100">Reset Entire Application Data</h3>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 font-medium">
+                    Permanently wipe all Expenses, EMI Plans, SIP Investments, Debts, Bank Balances, and custom settings across Firestore and local cache.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-rose-200 dark:border-rose-900/80 space-y-4 shadow-xs">
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                    Enter Security PIN Code (Default: 1234):
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    value={resetPin}
+                    onChange={(e) => {
+                      setResetPin(e.target.value);
+                      setPinError(null);
+                    }}
+                    placeholder="Enter 4-digit PIN (e.g. 1234)"
+                    className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold tracking-widest focus:outline-none transition-all ${
+                      pinError
+                        ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/60 text-rose-900 dark:text-rose-100'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-700 text-white focus:border-rose-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-rose-600'
+                    }`}
+                  />
+                  {pinError && (
+                    <p className="mt-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{pinError}</span>
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isResetting}
+                  onClick={async () => {
+                    if (resetPin.trim() === '1234') {
+                      setIsResetting(true);
+                      if (onResetApp) {
+                        await onResetApp();
+                      }
+                      setIsResetting(false);
+                      onClose();
+                    } else {
+                      setPinError('Incorrect PIN code! The default PIN is 1234.');
+                    }
+                  }}
+                  className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 cursor-pointer active:scale-98 transition-all"
+                >
+                  {isResetting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Wiping Application Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Confirm & Reset Entire App Data</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
