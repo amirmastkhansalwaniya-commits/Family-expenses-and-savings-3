@@ -961,6 +961,15 @@ export default function App() {
   // Debt Handler Functions
   const handleSaveDebt = async (debtData: Omit<DebtRecord, 'id'>, debtId?: string) => {
     if (debtId) {
+      const oldDebt = debts.find((d) => d.id === debtId);
+      if (debtData.type === 'given') {
+        const oldLentAmount = oldDebt && oldDebt.type === 'given' ? oldDebt.totalAmount : 0;
+        const delta = debtData.totalAmount - oldLentAmount;
+        if (delta !== 0) {
+          await adjustBankForMemberSpending(debtData.paidBy, delta, false);
+        }
+      }
+
       const updatedDebt: DebtRecord = { ...debtData, id: debtId };
       setDebts((prev) => {
         const next = prev.map((d) => (d.id === debtId ? updatedDebt : d));
@@ -978,6 +987,11 @@ export default function App() {
         console.warn('Error updating debt in Firestore:', err);
       }
     } else {
+      // Debit member bank account whenever Lent (given) amount is added inside debt tracker
+      if (debtData.type === 'given' && debtData.totalAmount > 0) {
+        await adjustBankForMemberSpending(debtData.paidBy, debtData.totalAmount, false);
+      }
+
       const tempId = `debt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newDebt: DebtRecord = { ...debtData, id: tempId };
       setDebts((prev) => {
@@ -1281,7 +1295,7 @@ export default function App() {
   // EMI CRUD Handlers
   const handleSaveEmi = async (emiData: Omit<EmiPlan, 'id'>, id?: string) => {
     if (id) {
-      // Calculate bank deduction difference on EMI update
+      // Calculate bank deduction difference on EMI update (without updating total spent overrides)
       const oldEmi = emis.find((e) => e.id === id);
       const oldPaidMonths = oldEmi ? oldEmi.paidMonths : 0;
       const oldEmiAmount = oldEmi ? oldEmi.emiAmount : 0;
@@ -1293,12 +1307,11 @@ export default function App() {
 
       let spendingDelta = newDeduction - oldDeduction;
       if (spendingDelta === 0 && newEmiAmount > 0) {
-        // Deduct single month EMI amount when updating EMI
         spendingDelta = newEmiAmount;
       }
 
       if (spendingDelta > 0) {
-        await adjustBankForMemberSpending(emiData.paidBy, spendingDelta);
+        await adjustBankForMemberSpending(emiData.paidBy, spendingDelta, false);
       }
 
       const updatedEmi: EmiPlan = { ...emiData, id };
@@ -1331,10 +1344,10 @@ export default function App() {
       const tempId = `emi_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newEmi: EmiPlan = { ...emiData, id: tempId };
 
-      // Deduct EMI amount from member's bank account for new EMI
+      // Deduct EMI amount from member's bank account for new EMI (without updating total spent overrides)
       const initialDeduction = (emiData.paidMonths > 0 ? emiData.paidMonths : 1) * emiData.emiAmount;
       if (initialDeduction > 0) {
-        await adjustBankForMemberSpending(emiData.paidBy, initialDeduction);
+        await adjustBankForMemberSpending(emiData.paidBy, initialDeduction, false);
       }
 
       setEmis((prev) => {
@@ -1405,8 +1418,8 @@ export default function App() {
       emiPlanId: emi.id,
     });
 
-    // 2. Deduct EMI amount from member's bank account
-    await adjustBankForMemberSpending(emi.paidBy, Number(emi.emiAmount) || 0);
+    // 2. Deduct EMI amount from member's bank account (without updating total spent overrides)
+    await adjustBankForMemberSpending(emi.paidBy, Number(emi.emiAmount) || 0, false);
 
     // 3. Update EMI document
     try {
@@ -1422,7 +1435,11 @@ export default function App() {
   };
 
   // Helper to deduct spending from member's bank account (or refund on delete/edit)
-  const adjustBankForMemberSpending = async (member: FamilyMember, spendingDelta: number) => {
+  const adjustBankForMemberSpending = async (
+    member: FamilyMember, 
+    spendingDelta: number,
+    updateSpentOverrides: boolean = true
+  ) => {
     if (!member || spendingDelta === 0) return;
 
     setMemberBankAmounts((prev) => {
@@ -1443,13 +1460,13 @@ export default function App() {
 
       const currentOverride = currentObj.customTotalSpentOverride;
       let newOverride = currentOverride;
-      if (currentOverride !== undefined && currentOverride !== null && !isNaN(Number(currentOverride))) {
+      if (updateSpentOverrides && currentOverride !== undefined && currentOverride !== null && !isNaN(Number(currentOverride))) {
         newOverride = Math.max(0, Number(currentOverride) + spendingDelta);
       }
 
       const currentMonthOverride = currentObj.customMonthSpentOverride;
       let newMonthOverride = currentMonthOverride;
-      if (currentMonthOverride !== undefined && currentMonthOverride !== null && !isNaN(Number(currentMonthOverride))) {
+      if (updateSpentOverrides && currentMonthOverride !== undefined && currentMonthOverride !== null && !isNaN(Number(currentMonthOverride))) {
         newMonthOverride = Math.max(0, Number(currentMonthOverride) + spendingDelta);
       }
 
@@ -1699,6 +1716,12 @@ export default function App() {
   };
 
   const handleAddSip = async (sipData: Omit<SipPlan, 'id'>) => {
+    // Debit monthly SIP amount from member's bank account when SIP is added
+    const amountToDebit = Number(sipData.monthlyAmount) || 0;
+    if (amountToDebit > 0) {
+      await adjustBankForMemberSpending(sipData.paidBy, amountToDebit, false);
+    }
+
     const tempId = `sip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newSip: SipPlan = { ...sipData, id: tempId };
 
@@ -1754,16 +1777,73 @@ export default function App() {
     }
   };
 
+  // Restore expenses handler
+  const handleRestoreExpenses = async (restoredExpenses: Expense[]) => {
+    if (!restoredExpenses || restoredExpenses.length === 0) return;
+
+    // Ensure every item has a unique ID
+    const formattedExpenses: Expense[] = restoredExpenses.map((exp, idx) => ({
+      ...exp,
+      id: exp.id || `restored_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+    }));
+
+    // Update local state and localStorage cache
+    setExpenses(formattedExpenses);
+    localStorage.setItem('family_expenses_cache', JSON.stringify(formattedExpenses));
+
+    // Save/Update in Firestore
+    try {
+      for (const item of formattedExpenses) {
+        const docRef = doc(db, 'expenses', item.id);
+        await setDoc(docRef, {
+          ...item,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Error restoring expenses into Firestore:', e);
+    }
+  };
+
+  // Full PIN-Protected App Reset Handler
   const handleResetApp = async () => {
     try {
-      const expensesRef = collection(db, 'expenses');
-      const snapshot = await getDocs(expensesRef);
-      const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(doc(db, 'expenses', docSnap.id)));
-      await Promise.all(deletePromises);
+      const collectionsToClear = [
+        'expenses',
+        'emis',
+        'sips',
+        'debts',
+        'memberBankAmounts',
+        'budgets',
+        'memberConfigs',
+        'familyTotalOverrides'
+      ];
+
+      for (const colName of collectionsToClear) {
+        try {
+          const snap = await getDocs(collection(db, colName));
+          const deletes = snap.docs.map((docSnap) => deleteDoc(doc(db, colName, docSnap.id)));
+          await Promise.all(deletes);
+        } catch (e) {
+          console.warn(`Error clearing collection ${colName}:`, e);
+        }
+      }
+
       setExpenses([]);
-      localStorage.setItem('has_seeded_expenses_v2', 'true');
+      setEmis([]);
+      setSips([]);
+      setDebts([]);
+      setMemberBankAmounts({});
+      setMemberConfigs({});
+
+      localStorage.clear();
+      localStorage.setItem('has_seeded_v3', 'true');
+      localStorage.setItem('has_seeded_bank_v1', 'true');
+      localStorage.setItem('has_seeded_emis_v2', 'true');
+      localStorage.setItem('has_seeded_sips_v1', 'true');
+      localStorage.setItem('has_seeded_debts_v1', 'true');
     } catch (e) {
-      console.error('Error resetting app expenses:', e);
+      console.error('Error resetting entire app:', e);
     }
   };
 
@@ -1954,6 +2034,8 @@ export default function App() {
               language={language}
               familyMembers={familyMembers}
               memberConfigs={memberConfigs}
+              onRestoreExpenses={handleRestoreExpenses}
+              onOpenExportImport={() => setIsExportImportModalOpen(true)}
             />
           )}
 
