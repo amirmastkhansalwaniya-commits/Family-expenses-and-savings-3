@@ -16,7 +16,7 @@ import {
   RotateCcw,
   Users
 } from 'lucide-react';
-import { Expense, FamilyMember, MemberBankAmount, EmiPlan, FAMILY_MEMBERS, ADMIN_MEMBER, MemberCustomConfig } from '../types';
+import { Expense, FamilyMember, MemberBankAmount, EmiPlan, SipPlan, DebtRecord, FAMILY_MEMBERS, ADMIN_MEMBER, MemberCustomConfig } from '../types';
 import {
   exportExpensesToCSV,
   exportBankBalancesToCSV,
@@ -46,6 +46,9 @@ interface ExportImportModalProps {
   allTimeMemberTotals?: Record<FamilyMember, number>;
   memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
   emis?: EmiPlan[];
+  sips?: SipPlan[];
+  debts?: DebtRecord[];
+  adminPin?: string;
   activeMember: FamilyMember;
   theme: 'light' | 'dark';
   language?: Language;
@@ -65,6 +68,9 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   allTimeMemberTotals,
   memberBankAmounts,
   emis = [],
+  sips = [],
+  debts = [],
+  adminPin,
   activeMember,
   theme,
   language = 'en' as Language,
@@ -168,7 +174,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       expenses,
       memberBankAmounts,
       emis,
-      monthlyBudget
+      sips,
+      debts,
+      monthlyBudget,
+      adminPin,
+      familyMembers,
+      memberConfigs
     });
   };
 
@@ -183,7 +194,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       expenses,
       memberBankAmounts,
       emis,
-      monthlyBudget
+      sips,
+      debts,
+      monthlyBudget,
+      adminPin,
+      familyMembers,
+      memberConfigs
     });
     const now = Date.now();
     setAutoWeeklyLastTime(now);
@@ -195,7 +211,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       expenses,
       memberBankAmounts,
       emis,
-      monthlyBudget
+      sips,
+      debts,
+      monthlyBudget,
+      adminPin,
+      familyMembers,
+      memberConfigs
     });
   };
 
@@ -319,6 +340,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
+  // Helper to remove undefined properties before saving to Firestore
+  const sanitizeForFirestore = (obj: any): any => {
+    if (obj === null || obj === undefined) return {};
+    return JSON.parse(JSON.stringify(obj));
+  };
+
   // Confirm JSON Restore into Firestore
   const handleConfirmJSONRestore = async () => {
     if (!jsonBackupData) return;
@@ -329,31 +356,135 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
 
     try {
       let expenseCount = 0;
+      let emiCount = 0;
+      let sipCount = 0;
+      let debtCount = 0;
 
-      // Restore Expenses
+      // 1. Restore Expenses
       if (Array.isArray(jsonBackupData.expenses) && jsonBackupData.expenses.length > 0) {
-        const expensesRef = collection(db, 'expenses');
         for (const exp of jsonBackupData.expenses) {
-          const { id, ...cleanExp } = exp;
-          await addDoc(expensesRef, {
-            ...cleanExp,
-            createdAt: cleanExp.createdAt || new Date().toISOString()
+          const expId = exp.id || `restored_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const docRef = doc(db, 'expenses', expId);
+          const dataToSave = sanitizeForFirestore({
+            ...exp,
+            id: expId,
+            createdAt: exp.createdAt || new Date().toISOString()
           });
+          try {
+            await setDoc(docRef, dataToSave, { merge: true });
+          } catch (e) {
+            console.warn(`Firestore setDoc skipped for expense ${expId}:`, e);
+          }
           expenseCount++;
         }
       }
 
-      // Restore Member Bank Amounts if present
+      // 2. Restore Member Bank Amounts if present
       if (jsonBackupData.memberBankAmounts && typeof jsonBackupData.memberBankAmounts === 'object') {
-        for (const m of FAMILY_MEMBERS) {
-          if (jsonBackupData.memberBankAmounts[m]) {
-            const docRef = doc(db, 'memberBankAmounts', m);
-            await setDoc(docRef, jsonBackupData.memberBankAmounts[m], { merge: true });
+        for (const [mKey, bankVal] of Object.entries(jsonBackupData.memberBankAmounts)) {
+          if (mKey && bankVal) {
+            const docRef = doc(db, 'memberBankAmounts', mKey);
+            try {
+              await setDoc(docRef, sanitizeForFirestore(bankVal), { merge: true });
+            } catch (e) {
+              console.warn(`Firestore setDoc skipped for bank balance ${mKey}:`, e);
+            }
           }
         }
       }
 
-      setImportSuccessMsg(`Full backup restored successfully! (${expenseCount} expenses added to Firestore)`);
+      // 3. Restore EMI Plans
+      if (Array.isArray(jsonBackupData.emis) && jsonBackupData.emis.length > 0) {
+        for (const emi of jsonBackupData.emis) {
+          const emiId = emi.id || `emi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const docRef = doc(db, 'emis', emiId);
+          try {
+            await setDoc(docRef, sanitizeForFirestore({ ...emi, id: emiId }), { merge: true });
+          } catch (e) {
+            console.warn(`Firestore setDoc skipped for EMI ${emiId}:`, e);
+          }
+          emiCount++;
+        }
+      }
+
+      // 4. Restore SIP Plans
+      if (Array.isArray(jsonBackupData.sips) && jsonBackupData.sips.length > 0) {
+        for (const sip of jsonBackupData.sips) {
+          const sipId = sip.id || `sip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const docRef = doc(db, 'sips', sipId);
+          try {
+            await setDoc(docRef, sanitizeForFirestore({ ...sip, id: sipId }), { merge: true });
+          } catch (e) {
+            console.warn(`Firestore setDoc skipped for SIP ${sipId}:`, e);
+          }
+          sipCount++;
+        }
+      }
+
+      // 5. Restore Debt Records
+      if (Array.isArray(jsonBackupData.debts) && jsonBackupData.debts.length > 0) {
+        for (const debt of jsonBackupData.debts) {
+          const debtId = debt.id || `debt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const docRef = doc(db, 'debts', debtId);
+          try {
+            await setDoc(docRef, sanitizeForFirestore({ ...debt, id: debtId }), { merge: true });
+          } catch (e) {
+            console.warn(`Firestore setDoc skipped for debt ${debtId}:`, e);
+          }
+          debtCount++;
+        }
+      }
+
+      // 6. Restore Monthly Budget
+      if (typeof jsonBackupData.monthlyBudget === 'number') {
+        localStorage.setItem('family_monthly_budget_cache', String(jsonBackupData.monthlyBudget));
+        const currentMonth = selectedMonth || new Date().toISOString().slice(0, 7);
+        const budgetDocRef = doc(db, 'budgets', currentMonth);
+        try {
+          await setDoc(budgetDocRef, { monthlyBudget: jsonBackupData.monthlyBudget }, { merge: true });
+        } catch (e) {
+          console.warn('Firestore setDoc skipped for budget:', e);
+        }
+      }
+
+      // 7. Restore Admin Security PIN
+      if (typeof jsonBackupData.adminPin === 'string' && jsonBackupData.adminPin) {
+        localStorage.setItem('admin_pin_code', jsonBackupData.adminPin);
+        const settingsRef = doc(db, 'settings', 'adminConfig');
+        try {
+          await setDoc(settingsRef, { adminPin: jsonBackupData.adminPin, updatedAt: new Date().toISOString() }, { merge: true });
+        } catch (e) {
+          console.warn('Firestore setDoc skipped for adminConfig:', e);
+        }
+      }
+
+      // 8. Restore Family Members List
+      if (Array.isArray(jsonBackupData.familyMembers) && jsonBackupData.familyMembers.length > 0) {
+        localStorage.setItem('family_members_list', JSON.stringify(jsonBackupData.familyMembers));
+        const membersListRef = doc(db, 'settings', 'familyMembersConfig');
+        try {
+          await setDoc(membersListRef, { members: jsonBackupData.familyMembers, updatedAt: new Date().toISOString() }, { merge: true });
+        } catch (e) {
+          console.warn('Firestore setDoc skipped for familyMembersConfig:', e);
+        }
+      }
+
+      // 9. Restore Custom Member Configs
+      if (jsonBackupData.memberConfigs && typeof jsonBackupData.memberConfigs === 'object') {
+        localStorage.setItem('family_member_configs', JSON.stringify(jsonBackupData.memberConfigs));
+        for (const [mName, configObj] of Object.entries(jsonBackupData.memberConfigs)) {
+          if (mName && configObj) {
+            const docRef = doc(db, 'memberConfigs', mName);
+            try {
+              await setDoc(docRef, sanitizeForFirestore(configObj), { merge: true });
+            } catch (e) {
+              console.warn(`Firestore setDoc skipped for memberConfig ${mName}:`, e);
+            }
+          }
+        }
+      }
+
+      setImportSuccessMsg(`Full application backup restored completely! (${expenseCount} expenses, ${emiCount} EMIs, ${sipCount} SIPs, ${debtCount} debts, member configs & settings restored)`);
       setJsonBackupData(null);
       setJsonFileName('');
       if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
