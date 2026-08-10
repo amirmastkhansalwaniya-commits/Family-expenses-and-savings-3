@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { Expense, FamilyMember, FAMILY_MEMBERS, MemberBankAmount, EmiPlan, CATEGORIES, CategoryId, MemberCustomConfig } from '../types';
+import { Expense, FamilyMember, FAMILY_MEMBERS, MemberBankAmount, EmiPlan, SipPlan, DebtRecord, CATEGORIES, CategoryId, MemberCustomConfig } from '../types';
 import { formatINR } from './formatters';
 import { Language, t } from './translations';
 
@@ -387,52 +387,64 @@ export const exportMemberDataToPDF = (
   doc.save(`${safeName}_statement_${fileDate}.pdf`);
 };
 
-/**
- * EXPORT FULL APPLICATION BACKUP JSON
- */
-export const exportBackupJSON = (backupData: {
+export interface FullBackupData {
   expenses: Expense[];
   memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
   emis?: EmiPlan[];
+  sips?: SipPlan[];
+  debts?: DebtRecord[];
   monthlyBudget?: number;
-}) => {
+  adminPin?: string;
+  familyMembers?: string[];
+  memberConfigs?: Record<string, MemberCustomConfig>;
+}
+
+/**
+ * EXPORT FULL APPLICATION BACKUP JSON
+ */
+export const exportBackupJSON = (backupData: FullBackupData) => {
   const payload = {
     app: 'Family Expense Tracker',
-    version: '1.0',
+    version: '2.0',
     exportDate: new Date().toISOString(),
     monthlyBudget: backupData.monthlyBudget || 50000,
-    expensesCount: backupData.expenses.length,
-    expenses: backupData.expenses,
+    adminPin: backupData.adminPin || '1234',
+    familyMembers: backupData.familyMembers || FAMILY_MEMBERS,
+    memberConfigs: backupData.memberConfigs || {},
+    expensesCount: (backupData.expenses || []).length,
+    expenses: backupData.expenses || [],
     memberBankAmounts: backupData.memberBankAmounts || {},
-    emis: backupData.emis || []
+    emis: backupData.emis || [],
+    sips: backupData.sips || [],
+    debts: backupData.debts || []
   };
 
   const jsonStr = JSON.stringify(payload, null, 2);
   const dateStr = new Date().toISOString().split('T')[0];
-  triggerDownload(jsonStr, `family_expense_tracker_backup_${dateStr}.json`, 'application/json');
+  triggerDownload(jsonStr, `family_expense_tracker_full_backup_${dateStr}.json`, 'application/json');
 };
 
 /**
  * EXPORT FULL APPLICATION BACKUP PDF
  */
-export const exportBackupPDF = (backupData: {
-  expenses: Expense[];
-  memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
-  emis?: EmiPlan[];
-  monthlyBudget?: number;
-}) => {
+export const exportBackupPDF = (backupData: FullBackupData) => {
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
   const payload = {
     app: 'Family Expense Tracker',
-    version: '1.0',
+    version: '2.0',
     exportDate: new Date().toISOString(),
     monthlyBudget: backupData.monthlyBudget || 50000,
-    expensesCount: backupData.expenses.length,
-    expenses: backupData.expenses,
+    adminPin: backupData.adminPin || '1234',
+    familyMembers: backupData.familyMembers || FAMILY_MEMBERS,
+    memberConfigs: backupData.memberConfigs || {},
+    expensesCount: (backupData.expenses || []).length,
+    expenses: backupData.expenses || [],
     memberBankAmounts: backupData.memberBankAmounts || {},
-    emis: backupData.emis || []
+    emis: backupData.emis || [],
+    sips: backupData.sips || [],
+    debts: backupData.debts || []
   };
 
   const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -458,25 +470,25 @@ export const exportBackupPDF = (backupData: {
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(14, currentY, pageWidth - 28, 24, 3, 3, 'D');
 
-  const totalSpent = backupData.expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalSpent = (backupData.expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'bold');
   doc.text('TOTAL EXPENSES', 20, currentY + 7);
   doc.text('TOTAL SPENT', 75, currentY + 7);
-  doc.text('ACTIVE EMIS', 130, currentY + 7);
-  doc.text('MONTHLY BUDGET', 165, currentY + 7);
+  doc.text('ACTIVE EMIS & SIPS', 125, currentY + 7);
+  doc.text('MONTHLY BUDGET', 170, currentY + 7);
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${backupData.expenses.length} records`, 20, currentY + 16);
+  doc.text(`${(backupData.expenses || []).length} records`, 20, currentY + 16);
   doc.setTextColor(79, 70, 229);
   doc.text(`Rs. ${totalSpent.toLocaleString('en-IN')}`, 75, currentY + 16);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${(backupData.emis || []).length} plans`, 130, currentY + 16);
-  doc.text(`Rs. ${(backupData.monthlyBudget || 50000).toLocaleString('en-IN')}`, 165, currentY + 16);
+  doc.text(`${(backupData.emis || []).length} EMI / ${(backupData.sips || []).length} SIP`, 125, currentY + 16);
+  doc.text(`Rs. ${(backupData.monthlyBudget || 50000).toLocaleString('en-IN')}`, 170, currentY + 16);
 
   currentY += 32;
 
@@ -484,10 +496,10 @@ export const exportBackupPDF = (backupData: {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`1. Expenses Register (${backupData.expenses.length} Records)`, 14, currentY);
+  doc.text(`1. Expenses Register (${(backupData.expenses || []).length} Records)`, 14, currentY);
   currentY += 4;
 
-  const expenseRows = backupData.expenses.map((exp, idx) => [
+  const expenseRows = (backupData.expenses || []).map((exp, idx) => [
     (idx + 1).toString(),
     exp.date || '-',
     exp.paidBy || '-',
@@ -584,6 +596,76 @@ export const exportBackupPDF = (backupData: {
       body: emiRows,
       theme: 'striped',
       headStyles: { fillColor: [217, 119, 6], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // Table 4: SIP Investment Plans
+  if (backupData.sips && backupData.sips.length > 0) {
+    if (currentY > 230) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(`4. Active SIP Investments (${backupData.sips.length})`, 14, currentY);
+    currentY += 4;
+
+    const sipRows = backupData.sips.map((sip, idx) => [
+      (idx + 1).toString(),
+      sip.title || '-',
+      sip.paidBy || '-',
+      `Rs. ${(sip.monthlyAmount || 0).toLocaleString('en-IN')}`,
+      sip.fundCategory || 'Mutual Fund',
+      `${sip.completedMonths || 0} Mo`,
+      (sip.status || 'active').toUpperCase()
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Fund Title', 'Paid By', 'Monthly SIP', 'Category', 'Paid Mo', 'Status']],
+      body: sipRows,
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // Table 5: Debt / Loan Records
+  if (backupData.debts && backupData.debts.length > 0) {
+    if (currentY > 230) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(`5. Debt & Loan Records (${backupData.debts.length})`, 14, currentY);
+    currentY += 4;
+
+    const debtRows = backupData.debts.map((debt, idx) => [
+      (idx + 1).toString(),
+      debt.title || '-',
+      debt.personName || '-',
+      debt.type === 'borrowed' ? 'Borrowed' : 'Given',
+      `Rs. ${(debt.totalAmount || 0).toLocaleString('en-IN')}`,
+      `Rs. ${(debt.remainingAmount || 0).toLocaleString('en-IN')}`,
+      (debt.status || 'active').toUpperCase()
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Title', 'Person / Bank', 'Type', 'Total Debt', 'Remaining', 'Status']],
+      body: debtRows,
+      theme: 'striped',
+      headStyles: { fillColor: [225, 29, 72], textColor: 255, fontStyle: 'bold' },
       styles: { fontSize: 8, cellPadding: 2.5 }
     });
 
@@ -892,7 +974,13 @@ export const parseBackupJSON = (jsonText: string) => {
         ? parsed.memberBankAmounts
         : undefined;
     const emis: EmiPlan[] | undefined = Array.isArray(parsed.emis) ? parsed.emis : undefined;
+    const sips: SipPlan[] | undefined = Array.isArray(parsed.sips) ? parsed.sips : undefined;
+    const debts: DebtRecord[] | undefined = Array.isArray(parsed.debts) ? parsed.debts : undefined;
     const monthlyBudget: number | undefined = typeof parsed.monthlyBudget === 'number' ? parsed.monthlyBudget : undefined;
+    const adminPin: string | undefined = typeof parsed.adminPin === 'string' ? parsed.adminPin : undefined;
+    const familyMembers: string[] | undefined = Array.isArray(parsed.familyMembers) ? parsed.familyMembers : undefined;
+    const memberConfigs: Record<string, MemberCustomConfig> | undefined =
+      parsed.memberConfigs && typeof parsed.memberConfigs === 'object' ? parsed.memberConfigs : undefined;
 
     return {
       success: true,
@@ -900,7 +988,12 @@ export const parseBackupJSON = (jsonText: string) => {
         expenses,
         memberBankAmounts,
         emis,
-        monthlyBudget
+        sips,
+        debts,
+        monthlyBudget,
+        adminPin,
+        familyMembers,
+        memberConfigs
       },
       error: null
     };
@@ -1061,7 +1154,12 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
     expenses: Expense[];
     memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
     emis?: EmiPlan[];
+    sips?: SipPlan[];
+    debts?: DebtRecord[];
     monthlyBudget?: number;
+    adminPin?: string;
+    familyMembers?: string[];
+    memberConfigs?: Record<string, MemberCustomConfig>;
   } | null;
   error: string | null;
 }> => {
