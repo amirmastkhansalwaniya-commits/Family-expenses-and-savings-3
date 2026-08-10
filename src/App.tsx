@@ -509,7 +509,12 @@ export default function App() {
             expenses,
             memberBankAmounts,
             emis,
-            monthlyBudget
+            sips,
+            debts,
+            monthlyBudget,
+            adminPin,
+            familyMembers,
+            memberConfigs
           });
           localStorage.setItem('auto_weekly_pdf_backup_last_time', String(now));
           const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -2197,6 +2202,9 @@ export default function App() {
         allTimeMemberTotals={allTimeMemberTotals}
         memberBankAmounts={memberBankAmounts}
         emis={emis}
+        sips={sips}
+        debts={debts}
+        adminPin={adminPin}
         activeMember={activeMember}
         theme={theme}
         language={language}
