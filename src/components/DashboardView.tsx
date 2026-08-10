@@ -518,7 +518,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }
 
-  monthExpenses.forEach(exp => {
+  // Exclude EMI tracker updates / EMI expenses from Monthly Expenses & Total Spent calculations
+  const nonEmiMonthExpenses = monthExpenses.filter(
+    (exp) => !exp.isEmiPayment && exp.category !== 'EMI'
+  );
+
+  nonEmiMonthExpenses.forEach(exp => {
     if (exp.paidBy) {
       if (!memberTotals[exp.paidBy]) {
         memberTotals[exp.paidBy] = { amount: 0, count: 0 };
@@ -543,8 +548,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     0
   );
 
-  // Total spent calculation in month (use sum of family members' monthly expenses)
-  const rawCalculatedTotalSpent = monthExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+  // Total spent calculation in month (excludes EMIs as per user requirement)
+  const rawCalculatedTotalSpent = nonEmiMonthExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const calculatedTotalSpent = Math.max(rawCalculatedTotalSpent, sumFamilyMonthlyExpenses);
   const sipExpenses = monthExpenses.filter(exp => (exp.category as string) === 'SIP');
   const totalSipInvested = sipExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
