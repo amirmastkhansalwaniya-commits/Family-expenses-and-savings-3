@@ -1634,35 +1634,39 @@ export default function App() {
       return next;
     });
 
-    const expenseToDelete = expenses.find((e) => e.id === expenseId);
-    if (expenseToDelete) {
-      const amountToRefund = Number(expenseToDelete.amount) || 0;
-      const paidBy = expenseToDelete.paidBy;
+    try {
+      const expenseToDelete = expenses.find((e) => e.id === expenseId);
+      if (expenseToDelete) {
+        const amountToRefund = Number(expenseToDelete.amount) || 0;
+        const paidBy = expenseToDelete.paidBy;
 
-      const docRef = doc(db, 'expenses', expenseId);
-      await deleteDoc(docRef);
+        const docRef = doc(db, 'expenses', expenseId);
+        await deleteDoc(docRef);
 
-      // Refund deducted amount back to member's bank account
-      await adjustBankForMemberSpending(paidBy, -amountToRefund);
+        // Refund deducted amount back to member's bank account
+        await adjustBankForMemberSpending(paidBy, -amountToRefund);
 
-      // If this expense was linked to an EMI plan, revert payment in EMI record
-      if (expenseToDelete.isEmiPayment && expenseToDelete.emiPlanId) {
-        const emi = emis.find((e) => e.id === expenseToDelete.emiPlanId);
-        if (emi) {
-          const monthKey = expenseToDelete.date ? expenseToDelete.date.slice(0, 7) : selectedMonth;
-          const updatedHistory = (emi.paymentHistory || []).filter((m) => m !== monthKey);
-          const newPaidMonths = Math.max(0, emi.paidMonths - 1);
-          const emiDocRef = doc(db, 'emis', emi.id);
-          await updateDoc(emiDocRef, {
-            paidMonths: newPaidMonths,
-            status: newPaidMonths >= emi.tenureMonths ? 'completed' : 'active',
-            paymentHistory: updatedHistory,
-          });
+        // If this expense was linked to an EMI plan, revert payment in EMI record
+        if (expenseToDelete.isEmiPayment && expenseToDelete.emiPlanId) {
+          const emi = emis.find((e) => e.id === expenseToDelete.emiPlanId);
+          if (emi) {
+            const monthKey = expenseToDelete.date ? expenseToDelete.date.slice(0, 7) : selectedMonth;
+            const updatedHistory = (emi.paymentHistory || []).filter((m) => m !== monthKey);
+            const newPaidMonths = Math.max(0, emi.paidMonths - 1);
+            const emiDocRef = doc(db, 'emis', emi.id);
+            await updateDoc(emiDocRef, {
+              paidMonths: newPaidMonths,
+              status: newPaidMonths >= emi.tenureMonths ? 'completed' : 'active',
+              paymentHistory: updatedHistory,
+            });
+          }
         }
+      } else {
+        const docRef = doc(db, 'expenses', expenseId);
+        await deleteDoc(docRef);
       }
-    } else {
-      const docRef = doc(db, 'expenses', expenseId);
-      await deleteDoc(docRef);
+    } catch (err) {
+      console.warn("Failed to delete expense from Firestore:", err);
     }
   };
 
