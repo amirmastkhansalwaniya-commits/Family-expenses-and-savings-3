@@ -867,33 +867,57 @@ export function translateCategoryLabel(categoryId: string, lang: Language | stri
   const norm = categoryId === 'Grocery' ? 'Groceries' : categoryId;
   switch (norm) {
     case 'Groceries':
-      return t('catGrocery', lang) || 'राशन व किराना';
+      return t('catGrocery', lang) || 'Groceries & Ration';
     case 'SIP':
-      return t('catSip', lang) || 'एसआईपी और निवेश';
+      return t('catSip', lang) || 'SIP & Investments';
     case 'EMI':
-      return t('catEmi', lang) || 'ईएमआई व ऋण';
+      return t('catEmi', lang) || 'EMI & Loans';
     case 'Utilities':
-      return t('catBills', lang) || 'बिल व बिजली';
+      return t('catBills', lang) || 'Utilities & Bills';
     case 'Medical':
-      return t('catMedical', lang) || 'दवाई व इलाज';
+      return t('catMedical', lang) || 'Medical & Healthcare';
     case 'Fuel':
-      return t('catFuel', lang) || 'ईंधन / पेट्रोल';
+      return t('catFuel', lang) || 'Fuel & Transport';
     case 'Rent':
-      return t('catRent', lang) || 'किराया व आवास';
+      return t('catRent', lang) || 'Rent & Housing';
     case 'Dining':
-      return t('catDining', lang) || 'खान-पान';
+      return t('catDining', lang) || 'Dining & Snacks';
     case 'Education':
-      return t('catEducation', lang) || 'शिक्षा व फीस';
+      return t('catEducation', lang) || 'Education & Fees';
     case 'Shopping':
-      return t('catShopping', lang) || 'खरीदारी';
+      return t('catShopping', lang) || 'Shopping & Clothes';
     case 'Entertainment':
-      return t('catEntertainment', lang) || 'मनोरंजन';
+      return t('catEntertainment', lang) || 'Entertainment & Movies';
     case 'Household':
-      return t('catHousehold', lang) || 'घरेलू सामान';
+      return t('catHousehold', lang) || 'Household Items';
+    case 'Travel':
+      return 'Travel & Vacations';
+    case 'Insurance':
+      return 'Insurance & Protection';
+    case 'Maintenance':
+      return 'Home & Vehicle Maintenance';
+    case 'PersonalCare':
+      return 'Personal Care & Beauty';
+    case 'GiftsDonations':
+      return 'Gifts, Pooja & Charity';
+    case 'Subscriptions':
+      return 'Digital Subscriptions & Apps';
+    case 'Fitness':
+      return 'Fitness, Sports & Gym';
+    case 'Pets':
+      return 'Pet Care & Supplies';
+    case 'BabyChild':
+      return 'Baby & Child Care';
+    case 'Taxes':
+      return 'Government Taxes & Fees';
+    case 'Business':
+      return 'Business & Office';
+    case 'SavingsReserve':
+      return 'Emergency Reserve & Cash';
     case 'Others':
-      return t('catOthers', lang) || 'अन्य';
+      return t('catOthers', lang) || 'Others / Misc';
     default:
-      return t(categoryId, lang);
+      return t(categoryId, lang) || categoryId;
   }
 }
 
