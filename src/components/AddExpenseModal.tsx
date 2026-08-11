@@ -83,6 +83,54 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Gemini AI Category Auto-Suggestion state
+  const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+  const [aiSuggestedCategory, setAiSuggestedCategory] = useState<{ category: CategoryId; reason: string } | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleFetchAiSuggestion = async (inputNotes?: string) => {
+    const query = (inputNotes !== undefined ? inputNotes : notes).trim();
+    if (!query || query.length < 2) {
+      setAiSuggestedCategory(null);
+      return;
+    }
+
+    setIsAiSuggesting(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/suggest-category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: query }),
+      });
+      const data = await res.json();
+      if (res.ok && data.category) {
+        setAiSuggestedCategory({
+          category: data.category as CategoryId,
+          reason: data.reason || 'Matched based on description',
+        });
+      } else {
+        setAiError(data.error || 'Unable to suggest category');
+      }
+    } catch (err: any) {
+      console.error('AI suggestion error:', err);
+      setAiError('Failed to connect to Gemini AI service');
+    } finally {
+      setIsAiSuggesting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!notes || notes.trim().length < 2) {
+      setAiSuggestedCategory(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      handleFetchAiSuggestion(notes);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [notes]);
   const [modalSize, setModalSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [groceryBoxSize, setGroceryBoxSize] = useState<'sm' | 'md' | 'lg'>('sm');
   const [grocerySearchQuery, setGrocerySearchQuery] = useState('');
@@ -457,6 +505,81 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
           {/* STEP 1: Expense Category & Amount */}
           {currentStep === 1 && (
             <div className="space-y-3 animate-fade-in">
+              {/* Optional Quick Description Input for Gemini AI Category Auto-Suggestion */}
+              <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-slate-50/90 dark:from-indigo-950/70 dark:via-purple-950/60 dark:to-slate-900 border border-indigo-200/80 dark:border-indigo-800 rounded-2xl space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+                    <span>Gemini AI Auto-Category Suggester</span>
+                  </label>
+                  {isAiSuggesting && (
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 animate-pulse">
+                      <Sparkles className="w-3 h-3 animate-spin" />
+                      Analyzing...
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="Type description e.g. Zomato dinner, Petrol, Blinkit milk, Electricity bill..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full pl-3 pr-20 py-1.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleFetchAiSuggestion(notes)}
+                    disabled={isAiSuggesting || !notes.trim()}
+                    className="absolute right-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Ask AI</span>
+                  </button>
+                </div>
+
+                {/* AI Suggestion Output Banner */}
+                {aiSuggestedCategory && (
+                  <div className="p-2.5 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 dark:text-white">
+                          <span>AI Suggested:</span>
+                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[11px] font-black">
+                            {getCategoryLabel(aiSuggestedCategory.category, language)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-medium">
+                          {aiSuggestedCategory.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    {category !== aiSuggestedCategory.category ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategory(aiSuggestedCategory.category);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Apply</span>
+                      </button>
+                    ) : (
+                      <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black rounded-lg shrink-0 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Applied</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Category Grid Switcher */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -471,6 +594,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-1.5 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
                   {CATEGORIES.map((cat) => {
                     const isSelected = category === cat.id;
+                    const isAiRecommended = aiSuggestedCategory?.category === cat.id;
                     return (
                       <button
                         key={cat.id}
@@ -481,16 +605,21 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                         className={`p-2 rounded-xl text-left text-xs font-black transition-all cursor-pointer flex items-center gap-2 border relative ${
                           isSelected
                             ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400'
+                            : isAiRecommended
+                            ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-900 dark:text-purple-200 border-purple-400 dark:border-purple-600 ring-2 ring-purple-300'
                             : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700 hover:bg-indigo-50/70 dark:hover:bg-slate-800'
                         }`}
                       >
                         <div className={`p-1 rounded-lg shrink-0 ${
-                          isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
+                          isSelected ? 'bg-white/20 text-white' : isAiRecommended ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
                         }`}>
                           {getCategoryIconComponent(cat.icon)}
                         </div>
                         <div className="truncate min-w-0 flex-1">
                           <span className="truncate block leading-tight text-[11px]">{getCategoryLabel(cat.id, language)}</span>
+                          {isAiRecommended && !isSelected && (
+                            <span className="text-[8.5px] font-black text-purple-600 dark:text-purple-300 block leading-tight">✨ AI Match</span>
+                          )}
                         </div>
                         {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />}
                       </button>
@@ -916,18 +1045,78 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 </div>
               </div>
 
-              {/* Notes Field */}
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
-                  Notes / Item Description (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Purchased monthly rations from Supermarket"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-extrabold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
-                />
+              {/* Notes Field with Gemini AI Auto-Categorizer */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    Notes / Item Description (Automated Gemini AI Categorization)
+                  </label>
+                  {isAiSuggesting && (
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 animate-pulse">
+                      <Sparkles className="w-3 h-3 animate-spin" />
+                      Gemini Analyzing...
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="e.g. Purchased monthly rations from Supermarket, Zomato order, Petrol fill..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full pl-3 pr-20 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-extrabold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleFetchAiSuggestion(notes)}
+                    disabled={isAiSuggesting || !notes.trim()}
+                    className="absolute right-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Ask AI</span>
+                  </button>
+                </div>
+
+                {/* AI Suggestion Output Banner */}
+                {aiSuggestedCategory && (
+                  <div className="p-2.5 bg-indigo-50/90 dark:bg-slate-900 border-2 border-indigo-500 rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 dark:text-white">
+                          <span>AI Suggested Category:</span>
+                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[11px] font-black">
+                            {getCategoryLabel(aiSuggestedCategory.category, language)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-300 truncate font-medium">
+                          {aiSuggestedCategory.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    {category !== aiSuggestedCategory.category ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategory(aiSuggestedCategory.category);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Apply Category</span>
+                      </button>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black rounded-lg shrink-0 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Category Applied</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Quick Summary Card */}
