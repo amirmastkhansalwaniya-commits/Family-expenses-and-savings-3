@@ -39,7 +39,9 @@ import {
   CreditCard,
   Upload,
   Download,
-  Database
+  Database,
+  Users,
+  User
 } from 'lucide-react';
 
 const CATEGORY_UI_CONFIG: Record<string, {
@@ -75,6 +77,7 @@ interface TransactionHistoryLogProps {
   memberConfigs?: Record<string, MemberCustomConfig>;
   onRestoreExpenses?: (restoredExpenses: Expense[]) => Promise<void> | void;
   onOpenExportImport?: () => void;
+  activeMember?: string;
 }
 
 export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
@@ -87,8 +90,10 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   memberConfigs,
   onRestoreExpenses,
   onOpenExportImport,
+  activeMember,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeMemberTab, setActiveMemberTab] = useState<string>('all');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<string>('');
@@ -182,6 +187,7 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   // Reset all custom filters
   const handleResetFilters = () => {
     setSearchTerm('');
+    setActiveMemberTab('all');
     setSelectedMembers([]);
     setSelectedCategories([]);
     setStartDate('');
@@ -190,6 +196,7 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
 
   const hasActiveFilters = 
     searchTerm.trim() !== '' || 
+    activeMemberTab !== 'all' ||
     selectedMembers.length > 0 || 
     selectedCategories.length > 0 || 
     startDate !== '' || 
@@ -197,6 +204,11 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
 
   // Filter expenses
   const filtered = expenses.filter((exp) => {
+    // Dedicated Member Tab filter
+    if (activeMemberTab !== 'all' && exp.paidBy !== activeMemberTab) {
+      return false;
+    }
+
     // Date Range Filter takes precedence over selectedMonth if specified
     if (startDate && exp.date && exp.date < startDate) {
       return false;
@@ -279,6 +291,86 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
 
   return (
     <div className="space-y-4">
+      
+      {/* Member-Specific Expense Log Selector Bar */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-3 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+          <div>
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Member-Specific Expense Logs</span>
+            </h3>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+              {activeMemberTab === 'all' 
+                ? 'Showing consolidated expense logs for all family members combined.' 
+                : `Showing separate expense log exclusively for ${activeMemberTab}.`}
+            </p>
+          </div>
+          {activeMemberTab !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setActiveMemberTab('all')}
+              className="self-start sm:self-auto px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Show All Members Log</span>
+            </button>
+          )}
+        </div>
+
+        {/* Member Tab Buttons Grid / Scroll */}
+        <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar scroll-smooth">
+          {/* All Members Combined Tab */}
+          <button
+            type="button"
+            onClick={() => setActiveMemberTab('all')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2.5 border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              activeMemberTab === 'all'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-indigo-400/50 dark:bg-indigo-600 dark:border-indigo-600'
+                : 'bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <Users className="w-4 h-4 text-indigo-400" />
+            <span>All Members Combined</span>
+            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-black ${
+              activeMemberTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+            }`}>
+              {expenses.length} logs
+            </span>
+          </button>
+
+          {/* Separate Individual Member Expense Log Tabs */}
+          {familyMembers.map((m) => {
+            const memberTheme = MEMBER_THEMES[m as FamilyMember];
+            const isSelected = activeMemberTab === m;
+            
+            // Calculate total expenses and count specifically for this member
+            const memberExps = expenses.filter(e => e.paidBy === m && (!selectedMonth || (e.date && e.date.startsWith(selectedMonth))));
+            const memberTotalSpent = memberExps.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setActiveMemberTab(m)}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2.5 border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  isSelected
+                    ? `${memberTheme?.badgeBg || 'bg-indigo-600'} ${memberTheme?.badgeText || 'text-white'} border-indigo-700 shadow-md ring-2 ring-indigo-400/60`
+                    : 'bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <MemberAvatar member={m} memberConfigs={memberConfigs} size="xs" />
+                <span className="font-black">{m}'s Log</span>
+                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-black ${
+                  isSelected ? 'bg-black/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}>
+                  {memberExps.length} logs • {formatINR(memberTotalSpent)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       
       {/* Search & Filter Header Control Bar */}
       <div className="bg-white border border-slate-100 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xs">
