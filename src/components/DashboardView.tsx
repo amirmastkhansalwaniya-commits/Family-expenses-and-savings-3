@@ -3,6 +3,7 @@ import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, MEMBER_THEMES, EmiPl
 import { formatINR, formatINRCompact, formatDateDisplay, formatMonthName, getCurrentMonthKey } from '../utils/formatters';
 import { MemberAvatar } from './MemberAvatar';
 import { PieChartSection } from './PieChartSection';
+import { EditTrendsModal } from './EditTrendsModal';
 import { 
   Wallet, 
   TrendingUp, 
@@ -32,6 +33,7 @@ import {
   Landmark,
   ArrowRight,
   RotateCcw,
+  RefreshCw,
   History,
   Edit2,
   Lock,
@@ -259,6 +261,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setFamilyTotalOverrides(updated);
     localStorage.setItem('family_custom_total_spent_overrides', JSON.stringify(updated));
   };
+
+  // Defined Member Trend Overrides per month (stored in localStorage)
+  const [memberTrendOverrides, setMemberTrendOverrides] = useState<Record<string, Record<string, number>>>(() => {
+    const saved = localStorage.getItem('family_member_trend_overrides');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {};
+  });
+
+  const handleSaveMemberTrendOverrides = (monthKey: string, memberAmounts: Record<string, number>) => {
+    const updated = { ...memberTrendOverrides, [monthKey]: memberAmounts };
+    setMemberTrendOverrides(updated);
+    localStorage.setItem('family_member_trend_overrides', JSON.stringify(updated));
+  };
+
+  const handleResetMonthTrendOverrides = (monthKey: string) => {
+    handleResetFamilyTotalOverride(monthKey);
+    const updated = { ...memberTrendOverrides };
+    delete updated[monthKey];
+    setMemberTrendOverrides(updated);
+    localStorage.setItem('family_member_trend_overrides', JSON.stringify(updated));
+  };
+
+  const handleRefreshAllTrends = () => {
+    const last6 = getLast6Months(selectedMonth);
+    const updatedTotalOverrides = { ...familyTotalOverrides };
+    const updatedMemberOverrides = { ...memberTrendOverrides };
+
+    last6.forEach(({ yearMonth }) => {
+      delete updatedTotalOverrides[yearMonth];
+      delete updatedMemberOverrides[yearMonth];
+    });
+
+    setFamilyTotalOverrides(updatedTotalOverrides);
+    localStorage.setItem('family_custom_total_spent_overrides', JSON.stringify(updatedTotalOverrides));
+    setMemberTrendOverrides(updatedMemberOverrides);
+    localStorage.setItem('family_member_trend_overrides', JSON.stringify(updatedMemberOverrides));
+  };
+
+  const handleRefreshMemberComparison = () => {
+    const updatedMemberOverrides = { ...memberTrendOverrides };
+    delete updatedMemberOverrides[selectedMonth];
+    setMemberTrendOverrides(updatedMemberOverrides);
+    localStorage.setItem('family_member_trend_overrides', JSON.stringify(updatedMemberOverrides));
+
+    handleResetFamilyTotalOverride(selectedMonth);
+  };
+
+  const handleRefreshPreDefinedBreakdown = () => {
+    const updatedMemberOverrides = { ...memberTrendOverrides };
+    delete updatedMemberOverrides[selectedMonth];
+    setMemberTrendOverrides(updatedMemberOverrides);
+    localStorage.setItem('family_member_trend_overrides', JSON.stringify(updatedMemberOverrides));
+
+    if (memberBankAmounts && onUpdateBankAmount) {
+      familyMembers.forEach((m) => {
+        const currentBank = memberBankAmounts[m] || { bankBalance: 0, pendingDues: 0 };
+        if (currentBank.customMonthSpentOverride !== undefined || currentBank.customTotalSpentOverride !== undefined) {
+          const updated = { ...currentBank };
+          delete updated.customMonthSpentOverride;
+          delete updated.customTotalSpentOverride;
+          onUpdateBankAmount(m, updated);
+        }
+      });
+    }
+
+    handleResetFamilyTotalOverride(selectedMonth);
+  };
+
+  const [isEditTrendsModalOpen, setIsEditTrendsModalOpen] = useState(false);
 
   // Change Total Family Expenses Modal State
   const [isEditTotalExpensesModalOpen, setIsEditTotalExpensesModalOpen] = useState(false);
@@ -488,15 +563,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Compute 6-Month Trend Data
   const last6Months = getLast6Months(selectedMonth);
   const trendsData = last6Months.map(({ yearMonth, label }) => {
-    const mExpenses = expenses.filter(exp => exp.date && exp.date.startsWith(yearMonth));
-    const total = mExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+    // Exclude EMI payments to keep data consistent with monthly total rules
+    const mExpenses = expenses.filter(
+      (exp) =>
+        exp.date &&
+        exp.date.startsWith(yearMonth) &&
+        !exp.isEmiPayment &&
+        exp.category !== 'EMI'
+    );
 
     const memberAmounts: Record<string, number> = {};
-    FAMILY_MEMBERS.forEach(m => {
-      memberAmounts[m] = mExpenses
-        .filter(exp => exp.paidBy === m)
+    familyMembers.forEach((m) => {
+      const calcMember = mExpenses
+        .filter((exp) => exp.paidBy === m)
         .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+
+      const bankOverride =
+        yearMonth === selectedMonth
+          ? memberBankAmounts?.[m]?.customMonthSpentOverride
+          : undefined;
+      const trendOverride = memberTrendOverrides[yearMonth]?.[m];
+
+      if (trendOverride !== undefined) {
+        memberAmounts[m] = trendOverride;
+      } else if (
+        bankOverride !== undefined &&
+        bankOverride !== null &&
+        !isNaN(Number(bankOverride))
+      ) {
+        memberAmounts[m] = Number(bankOverride);
+      } else {
+        memberAmounts[m] = calcMember;
+      }
     });
+
+    const sumMembers = Object.values(memberAmounts).reduce((a, b) => a + b, 0);
+    const rawTotal = mExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+    const calculatedTotal = Math.max(rawTotal, sumMembers);
+    const total =
+      familyTotalOverrides[yearMonth] !== undefined
+        ? familyTotalOverrides[yearMonth]
+        : calculatedTotal;
 
     return {
       month: label,
@@ -509,21 +616,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Breakdown by Family Member for selectedMonth
   const memberTotals: Record<string, { amount: number; count: number }> = {};
-  familyMembers.forEach(m => {
+  familyMembers.forEach((m) => {
     memberTotals[m] = { amount: 0, count: 0 };
   });
-  if (typeof FAMILY_MEMBERS !== 'undefined' && Array.isArray(FAMILY_MEMBERS)) {
-    FAMILY_MEMBERS.forEach(m => {
-      if (!memberTotals[m]) memberTotals[m] = { amount: 0, count: 0 };
-    });
-  }
 
   // Exclude EMI tracker updates / EMI expenses from Monthly Expenses & Total Spent calculations
   const nonEmiMonthExpenses = monthExpenses.filter(
     (exp) => !exp.isEmiPayment && exp.category !== 'EMI'
   );
 
-  nonEmiMonthExpenses.forEach(exp => {
+  nonEmiMonthExpenses.forEach((exp) => {
     if (exp.paidBy) {
       if (!memberTotals[exp.paidBy]) {
         memberTotals[exp.paidBy] = { amount: 0, count: 0 };
@@ -533,12 +635,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   });
 
-  // Apply customMonthSpentOverride if present for members
-  FAMILY_MEMBERS.forEach(m => {
-    const override = memberBankAmounts?.[m]?.customMonthSpentOverride;
-    if (override !== undefined && override !== null && !isNaN(Number(override))) {
+  // Apply bank customMonthSpentOverride or memberTrendOverrides for selectedMonth
+  familyMembers.forEach((m) => {
+    const trendOverride = memberTrendOverrides[selectedMonth]?.[m];
+    const bankOverride = memberBankAmounts?.[m]?.customMonthSpentOverride;
+
+    if (trendOverride !== undefined && !isNaN(Number(trendOverride))) {
       if (!memberTotals[m]) memberTotals[m] = { amount: 0, count: 0 };
-      memberTotals[m].amount = Number(override);
+      memberTotals[m].amount = Number(trendOverride);
+    } else if (
+      bankOverride !== undefined &&
+      bankOverride !== null &&
+      !isNaN(Number(bankOverride))
+    ) {
+      if (!memberTotals[m]) memberTotals[m] = { amount: 0, count: 0 };
+      memberTotals[m].amount = Number(bankOverride);
     }
   });
 
@@ -555,6 +666,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalSipInvested = sipExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const hasCustomTotalOverride = familyTotalOverrides[selectedMonth] !== undefined;
   const totalSpent = hasCustomTotalOverride ? familyTotalOverrides[selectedMonth] : calculatedTotalSpent;
+
+  // Auto-sync Total Family Expenses in real-time whenever member totals, expenses or selected month changes
+  useEffect(() => {
+    if (familyTotalOverrides[selectedMonth] !== undefined && familyTotalOverrides[selectedMonth] !== sumFamilyMonthlyExpenses) {
+      handleSaveFamilyTotalOverride(selectedMonth, sumFamilyMonthlyExpenses);
+    }
+  }, [sumFamilyMonthlyExpenses, selectedMonth, familyTotalOverrides]);
+
   const remainingBudget = monthlyBudget - totalSpent;
   const budgetUsagePercent = monthlyBudget > 0 ? Math.min(Math.round((totalSpent / monthlyBudget) * 100), 999) : 0;
 
@@ -664,9 +783,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   });
 
   // Top Spender & Top Category
-  let topSpender: FamilyMember = familyMembers[0] || FAMILY_MEMBERS[0] || 'Aamir Khan';
+  let topSpender: FamilyMember = familyMembers[0] || 'Amir Khan';
   let maxSpent = 0;
-  FAMILY_MEMBERS.forEach(m => {
+  familyMembers.forEach(m => {
     const amt = memberTotals[m]?.amount || 0;
     if (amt > maxSpent) {
       maxSpent = amt;
@@ -1120,29 +1239,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             <button
               type="button"
-              onClick={() => setChartMode('total')}
-              className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                chartMode === 'total'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={handleRefreshAllTrends}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all cursor-pointer shadow-2xs"
+              title="Refresh 6-month trends data to strictly match application expense records"
             >
-              Total vs Budget
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh</span>
             </button>
+
             <button
               type="button"
-              onClick={() => setChartMode('members')}
-              className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                chartMode === 'members'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={() => setIsEditTrendsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer shadow-2xs"
+              title="Edit Trend Data & Defined Member Amounts"
             >
-              Member Breakdown
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Edit Trends / Data</span>
             </button>
+
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setChartMode('total')}
+                className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                  chartMode === 'total'
+                    ? 'bg-white text-indigo-600 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Total vs Budget
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartMode('members')}
+                className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                  chartMode === 'members'
+                    ? 'bg-white text-indigo-600 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Member Breakdown
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1187,17 +1328,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                 </>
               ) : (
-                FAMILY_MEMBERS.map((m) => (
-                  <Line 
-                    key={m}
-                    type="monotone" 
-                    dataKey={m} 
-                    stroke={MEMBER_HEX_COLORS[m]} 
-                    strokeWidth={2.5} 
-                    dot={{ r: 4, fill: MEMBER_HEX_COLORS[m], strokeWidth: 1.5, stroke: '#ffffff' }}
-                    activeDot={{ r: 6 }}
-                  />
-                ))
+                familyMembers.map((m) => {
+                  const theme = getMemberTheme(m, memberConfigs);
+                  return (
+                    <Line 
+                      key={m}
+                      type="monotone" 
+                      dataKey={m} 
+                      stroke={theme.hex} 
+                      strokeWidth={2.5} 
+                      dot={{ r: 4, fill: theme.hex, strokeWidth: 1.5, stroke: '#ffffff' }}
+                      activeDot={{ r: 6 }}
+                    />
+                  );
+                })
               )}
             </LineChart>
           </ResponsiveContainer>
@@ -1215,6 +1359,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         memberConfigs={memberConfigs}
         language={language}
         onOpenAddExpense={onOpenAddExpense}
+        onOpenManageMembers={onOpenManageMembers}
+        onRefreshData={handleRefreshAllTrends}
       />
 
       {/* Member Pending Bank Dues & Bank Accounts Section */}
@@ -1312,23 +1458,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Breakdown by Pre-Configured Family Members */}
       <div className="space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-indigo-600" />
             Expenses Breakdown by Pre-Defined Member
           </h2>
-          <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-200/80 dark:border-emerald-800/80 flex items-center gap-1.5 self-start sm:self-auto">
-            <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Spent of this month restarts from ₹0 on 1st of every month</span>
-          </span>
+          <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={handleRefreshPreDefinedBreakdown}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all cursor-pointer shadow-2xs"
+              title="Refresh pre-defined member expenses breakdown to strictly match application expense entries"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Data</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsEditTrendsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer shadow-2xs"
+              title="Edit Member Amounts & Breakdown Overrides"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>Edit Amounts</span>
+            </button>
+
+            <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-200/80 dark:border-emerald-800/80 flex items-center gap-1.5">
+              <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Spent restarts on 1st</span>
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {FAMILY_MEMBERS.map((member) => {
+          {familyMembers.map((member) => {
             const data = memberTotals[member] || { amount: 0, count: 0 };
             const percentOfTotal = totalSpent > 0 ? Math.round(((data.amount || 0) / totalSpent) * 100) : 0;
             const isActiveUser = member === activeMember;
-            const theme = MEMBER_THEMES[member];
+            const theme = getMemberTheme(member, memberConfigs);
 
             // All-Time Total Spent for this member across all recorded expenses (or custom override)
             const allTimeMemberExps = expenses.filter((e) => e.paidBy === member);
@@ -1683,37 +1851,76 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <TrendingUp className="w-4 h-4 text-indigo-600" />
               Member Comparison Chart
             </h3>
-            <button
-              onClick={onOpenAddExpense}
-              className="text-xs font-extrabold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add New
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRefreshMemberComparison}
+                className="text-xs font-extrabold text-emerald-700 hover:bg-emerald-100 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                title="Refresh member comparison chart to strictly match application expense records"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh</span>
+              </button>
+
+              {onOpenManageMembers && (
+                <button
+                  type="button"
+                  onClick={onOpenManageMembers}
+                  className="text-xs font-extrabold text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Manage Family Members"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit Members
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onOpenAddExpense}
+                className="text-xs font-extrabold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add New
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4 pt-1">
-            {FAMILY_MEMBERS.map((m) => {
+            {familyMembers.map((m) => {
               const spent = memberTotals[m]?.amount || 0;
-              const maxMemberSpent = Math.max(...FAMILY_MEMBERS.map(mem => memberTotals[mem]?.amount || 0), 1);
+              const maxMemberSpent = Math.max(...familyMembers.map(mem => memberTotals[mem]?.amount || 0), 1);
               const barWidthPercent = Math.round((spent / maxMemberSpent) * 100);
-              const theme = MEMBER_THEMES[m];
+              const theme = getMemberTheme(m, memberConfigs);
 
               return (
-                <div key={m} className="space-y-1">
+                <div key={m} className="space-y-1 group">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-900 font-black flex items-center gap-1.5">
                       <span>{theme.emoji}</span>
-                      {m}
+                      <span>{m}</span>
+                      {memberTotals[m]?.count !== undefined && (
+                        <span className="text-[10px] text-slate-400 font-medium">({memberTotals[m].count} txns)</span>
+                      )}
                     </span>
-                    <span className="font-mono text-slate-900 font-black">
-                      {formatINR(spent)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-slate-900 font-black">
+                        {formatINR(spent)}
+                      </span>
+                      {onSelectMember && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectMember(m)}
+                          className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded cursor-pointer transition-colors"
+                          title={`Filter expenses for ${m}`}
+                        >
+                          Edit/Filter
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${theme.bg}`}
-                      style={{ width: `${barWidthPercent}%` }}
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${barWidthPercent}%`, backgroundColor: theme.hex }}
                     ></div>
                   </div>
                 </div>
@@ -1854,11 +2061,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {FAMILY_MEMBERS.map((member) => {
+                      {familyMembers.map((member) => {
                         const paid = memberTotals[member]?.amount || 0;
                         const count = memberTotals[member]?.count || 0;
                         const pct = totalSpent > 0 ? ((paid / totalSpent) * 100).toFixed(1) : '0';
-                        const theme = MEMBER_THEMES[member];
+                        const theme = getMemberTheme(member, memberConfigs);
 
                         return (
                           <tr key={member} className="hover:bg-slate-50/80">
@@ -2676,12 +2883,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       handleSaveFamilyTotalOverride(selectedMonth, sumFamilyMonthlyExpenses);
-                      setTotalEditSuccessMsg(`Set Total Family Expenses to Monthly Expenses sum (${formatINR(sumFamilyMonthlyExpenses)})!`);
+                      setTotalEditSuccessMsg(`Total Family Expenses auto-synced to ${formatINR(sumFamilyMonthlyExpenses)}!`);
                     }}
-                    className="py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
+                    className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Sync Total Expense</span>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                    </span>
+                    <span>✓ Auto-Synced (Real-Time)</span>
                   </button>
                 </div>
 
@@ -3123,6 +3333,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Edit 6-Month Spending Trends & Member Data Modal */}
+      <EditTrendsModal
+        isOpen={isEditTrendsModalOpen}
+        onClose={() => setIsEditTrendsModalOpen(false)}
+        selectedMonth={selectedMonth}
+        monthlyBudget={monthlyBudget}
+        onUpdateBudget={onUpdateBudget}
+        familyMembers={familyMembers}
+        familyTotalOverrides={familyTotalOverrides}
+        onSaveFamilyTotalOverride={handleSaveFamilyTotalOverride}
+        memberTrendOverrides={memberTrendOverrides}
+        onSaveMemberTrendOverrides={handleSaveMemberTrendOverrides}
+        onResetMonthOverride={handleResetMonthTrendOverrides}
+        language={language}
+      />
     </div>
   );
 };
