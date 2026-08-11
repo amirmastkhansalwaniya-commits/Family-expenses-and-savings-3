@@ -568,9 +568,9 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
                 )}
               </div>
 
-              <h4 className="text-base font-black">Remove "{memberToRemove}"?</h4>
-              <p className="text-xs text-slate-400 mt-1 font-medium">
-                To remove this family member, please enter your Admin Security PIN code to confirm deletion.
+              <h4 className="text-base font-black text-rose-600 dark:text-rose-400">Remove "{memberToRemove}" & Delete Data?</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium leading-relaxed">
+                Removing this family member will simultaneously delete their profile, bank account records, and all associated expense & transaction data. Enter your Admin PIN to confirm:
               </p>
 
               {/* PIN Code Entry Field */}
