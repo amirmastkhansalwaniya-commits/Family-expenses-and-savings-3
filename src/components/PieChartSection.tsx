@@ -35,7 +35,8 @@ import {
   TrendingUp,
   Info,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from 'lucide-react';
 
 interface PieChartSectionProps {
@@ -48,25 +49,39 @@ interface PieChartSectionProps {
   memberConfigs?: Record<string, MemberCustomConfig>;
   language?: Language;
   onOpenAddExpense?: () => void;
+  onOpenManageMembers?: () => void;
+  onRefreshData?: () => void;
 }
 
 export type PieDataType = 'category' | 'member' | 'emi' | 'bank' | 'grocery' | 'all';
 
 // Color Palette for Category Slices
 const CATEGORY_COLORS: Record<string, string> = {
-  Groceries: '#10b981', // Emerald
-  SIP: '#059669',       // Teal
-  EMI: '#6366f1',       // Indigo
-  Utilities: '#f59e0b', // Amber
-  Medical: '#f43f5e',   // Rose
-  Fuel: '#3b82f6',      // Blue
-  Rent: '#4f46e5',      // Deep Indigo
-  Dining: '#f97316',    // Orange
-  Education: '#a855f7', // Purple
-  Shopping: '#ec4899',  // Pink
-  Entertainment: '#06b6d4', // Cyan
-  Household: '#14b8a6', // Teal
-  Others: '#64748b',    // Slate
+  Groceries: '#10b981',      // Emerald
+  SIP: '#059669',            // Teal
+  EMI: '#6366f1',            // Indigo
+  Utilities: '#f59e0b',      // Amber
+  Medical: '#f43f5e',        // Rose
+  Fuel: '#3b82f6',           // Blue
+  Rent: '#4f46e5',           // Deep Indigo
+  Dining: '#f97316',         // Orange
+  Education: '#a855f7',      // Purple
+  Shopping: '#ec4899',       // Pink
+  Entertainment: '#06b6d4',  // Cyan
+  Household: '#14b8a6',      // Teal
+  Travel: '#0284c7',         // Sky Blue
+  Insurance: '#7c3aed',      // Violet
+  Maintenance: '#d97706',    // Dark Amber
+  PersonalCare: '#e11d48',   // Bright Rose
+  GiftsDonations: '#c026d3', // Fuchsia
+  Subscriptions: '#2563eb',  // Blue
+  Fitness: '#65a30d',        // Lime
+  Pets: '#ea580c',           // Rust Orange
+  BabyChild: '#db2777',      // Hot Pink
+  Taxes: '#475569',          // Slate Dark
+  Business: '#3730a3',       // Deep Purple-Indigo
+  SavingsReserve: '#047857', // Deep Emerald
+  Others: '#64748b',         // Slate
 };
 
 // Fallback palette for dynamic slices
@@ -152,6 +167,8 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
   memberConfigs,
   language = 'en',
   onOpenAddExpense,
+  onOpenManageMembers,
+  onRefreshData,
 }) => {
   const [activeTab, setActiveTab] = useState<PieDataType>('category');
   const [timeScope, setTimeScope] = useState<'month' | 'all'>('month');
@@ -217,7 +234,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
           count: data.count,
           percent: grandTotal > 0 ? data.amount / grandTotal : 0,
           emoji: theme.emoji,
-          color: VIBRANT_PALETTE[idx % VIBRANT_PALETTE.length],
+          color: theme.hex || VIBRANT_PALETTE[idx % VIBRANT_PALETTE.length],
         };
       })
       .filter((item) => item.value > 0)
@@ -419,6 +436,23 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
               🥧 Solid Pie
             </button>
           </div>
+
+          {/* Refresh Data Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedSlice(null);
+              setActiveIndex(undefined);
+              if (onRefreshData) {
+                onRefreshData();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer shadow-2xs shrink-0"
+            title="Refresh Expansion Breakdown data to match application state"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh Data</span>
+          </button>
 
         </div>
       </div>
