@@ -118,3 +118,23 @@ export const SAMPLE_SEED_EXPENSES: Omit<Expense, 'id'>[] = [
     addedByMember: 'Sonam',
   },
 ];
+
+export function getLast6Months(targetMonthStr: string): { yearMonth: string; label: string }[] {
+  const parts = targetMonthStr.split('-');
+  const year = parseInt(parts[0], 10) || new Date().getFullYear();
+  const month = parseInt(parts[1], 10) || (new Date().getMonth() + 1);
+  const targetDate = new Date(year, month - 1, 1);
+
+  const result: { yearMonth: string; label: string }[] = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(targetDate.getFullYear(), targetDate.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const yearMonth = `${y}-${m}`;
+    const label = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    result.push({ yearMonth, label });
+  }
+
+  return result;
+}
