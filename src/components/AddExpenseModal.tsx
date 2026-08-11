@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, CategoryId, MEMBER_THEMES, MemberCustomConfig, GROCERY_SUBTYPES, GrocerySubtype } from '../types';
-import { X, Plus, Sparkles, Landmark, ShoppingBag, Check, Settings2, TrendingUp, PiggyBank, Calendar, Clock, Pencil, Trash2, Edit3, RotateCcw, Maximize2, Minimize2, Scaling, ChevronRight, ChevronLeft, CheckCircle2, User } from 'lucide-react';
+import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, CategoryId, MEMBER_THEMES, MemberCustomConfig, GROCERY_SUBTYPES, GrocerySubtype, CategorySubtype, CATEGORY_SUBTYPES_MAP } from '../types';
+import { X, Plus, Sparkles, Landmark, ShoppingBag, Check, Settings2, TrendingUp, PiggyBank, Calendar, Clock, Pencil, Trash2, Edit3, RotateCcw, Maximize2, Minimize2, Scaling, ChevronRight, ChevronLeft, CheckCircle2, User, Search, Tag, Filter, ShoppingCart, CreditCard, Zap, HeartPulse, Fuel as FuelIcon, Home, Utensils, GraduationCap, Film, Package, MoreHorizontal, Plane, ShieldCheck, Wrench, Gift, Tv, Dumbbell, Dog, Baby, Briefcase } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Language, t, getCategoryLabel } from '../utils/translations';
 import { MemberAvatar } from './MemberAvatar';
@@ -34,6 +34,36 @@ const getCurrentTimeStr = () => {
   return `${hours}:${minutes}`;
 };
 
+const getCategoryIconComponent = (iconName: string) => {
+  switch (iconName) {
+    case 'ShoppingCart': return <ShoppingCart className="w-4 h-4" />;
+    case 'TrendingUp': return <TrendingUp className="w-4 h-4" />;
+    case 'CreditCard': return <CreditCard className="w-4 h-4" />;
+    case 'Zap': return <Zap className="w-4 h-4" />;
+    case 'HeartPulse': return <HeartPulse className="w-4 h-4" />;
+    case 'Fuel': return <FuelIcon className="w-4 h-4" />;
+    case 'Home': return <Home className="w-4 h-4" />;
+    case 'Utensils': return <Utensils className="w-4 h-4" />;
+    case 'GraduationCap': return <GraduationCap className="w-4 h-4" />;
+    case 'ShoppingBag': return <ShoppingBag className="w-4 h-4" />;
+    case 'Film': return <Film className="w-4 h-4" />;
+    case 'Package': return <Package className="w-4 h-4" />;
+    case 'Plane': return <Plane className="w-4 h-4" />;
+    case 'ShieldCheck': return <ShieldCheck className="w-4 h-4" />;
+    case 'Wrench': return <Wrench className="w-4 h-4" />;
+    case 'Sparkles': return <Sparkles className="w-4 h-4" />;
+    case 'Gift': return <Gift className="w-4 h-4" />;
+    case 'Tv': return <Tv className="w-4 h-4" />;
+    case 'Dumbbell': return <Dumbbell className="w-4 h-4" />;
+    case 'Dog': return <Dog className="w-4 h-4" />;
+    case 'Baby': return <Baby className="w-4 h-4" />;
+    case 'Landmark': return <Landmark className="w-4 h-4" />;
+    case 'Briefcase': return <Briefcase className="w-4 h-4" />;
+    case 'PiggyBank': return <PiggyBank className="w-4 h-4" />;
+    default: return <MoreHorizontal className="w-4 h-4" />;
+  }
+};
+
 export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   isOpen,
   onClose,
@@ -47,73 +77,129 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [amount, setAmount] = useState<string>('');
   const [category, setCategory] = useState<CategoryId>('Groceries');
-  const [expenseType, setExpenseType] = useState<'grocery' | 'sip'>('grocery');
   const [paidBy, setPaidBy] = useState<FamilyMember>(activeMember);
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [time, setTime] = useState<string>(getCurrentTimeStr());
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Gemini AI Category Auto-Suggestion state
+  const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+  const [aiSuggestedCategory, setAiSuggestedCategory] = useState<{ category: CategoryId; reason: string } | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleFetchAiSuggestion = async (inputNotes?: string) => {
+    const query = (inputNotes !== undefined ? inputNotes : notes).trim();
+    if (!query || query.length < 2) {
+      setAiSuggestedCategory(null);
+      return;
+    }
+
+    setIsAiSuggesting(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/suggest-category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: query }),
+      });
+      const data = await res.json();
+      if (res.ok && data.category) {
+        setAiSuggestedCategory({
+          category: data.category as CategoryId,
+          reason: data.reason || 'Matched based on description',
+        });
+      } else {
+        setAiError(data.error || 'Unable to suggest category');
+      }
+    } catch (err: any) {
+      console.error('AI suggestion error:', err);
+      setAiError('Failed to connect to Gemini AI service');
+    } finally {
+      setIsAiSuggesting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!notes || notes.trim().length < 2) {
+      setAiSuggestedCategory(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      handleFetchAiSuggestion(notes);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [notes]);
   const [modalSize, setModalSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [groceryBoxSize, setGroceryBoxSize] = useState<'sm' | 'md' | 'lg'>('sm');
+  const [grocerySearchQuery, setGrocerySearchQuery] = useState('');
+  const [groceryFilterTab, setGroceryFilterTab] = useState<'all' | 'quick' | 'staples' | 'fresh' | 'store' | 'home'>('all');
 
-  // Managed Grocery Subtypes state (supports Edit and Delete for any option)
-  const [grocerySubtypesList, setGrocerySubtypesList] = useState<GrocerySubtype[]>(() => {
-    const saved = localStorage.getItem('family_grocery_subtypes_v3');
+  // Managed Category Subtypes Map state (supports custom options across ALL categories)
+  const [categorySubtypesMap, setCategorySubtypesMap] = useState<Record<CategoryId, CategorySubtype[]>>(() => {
+    const saved = localStorage.getItem('family_category_subtypes_map_v2');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (parsed && typeof parsed === 'object') {
+          return { ...CATEGORY_SUBTYPES_MAP, ...parsed };
+        }
       } catch (e) {}
     }
-    return GROCERY_SUBTYPES;
+    return CATEGORY_SUBTYPES_MAP;
   });
 
   const [editingSubtypeId, setEditingSubtypeId] = useState<string | null>(null);
   const [optionLabel, setOptionLabel] = useState('');
-  const [optionEmoji, setOptionEmoji] = useState('🛒');
+  const [optionEmoji, setOptionEmoji] = useState('🏷️');
   const [optionNotes, setOptionNotes] = useState('');
   const [isManagingOptions, setIsManagingOptions] = useState(false);
 
-  const handleSaveGrocerySubtype = (e?: React.SyntheticEvent) => {
+  const handleSaveCategorySubtype = (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
     if (!optionLabel.trim()) return;
 
+    const currentList = categorySubtypesMap[category] || [];
+    let updatedList: CategorySubtype[];
+
     if (editingSubtypeId) {
-      // Edit existing option
-      const updated = grocerySubtypesList.map((sub) =>
-        sub.id === editingSubtypeId
+      updatedList = currentList.map((item) =>
+        item.id === editingSubtypeId
           ? {
-              ...sub,
+              ...item,
               label: optionLabel.trim(),
-              emoji: optionEmoji.trim() || '🛒',
+              emoji: optionEmoji.trim() || '🏷️',
               defaultNotes: optionNotes.trim() || `${optionLabel.trim()} item type`,
             }
-          : sub
+          : item
       );
-      setGrocerySubtypesList(updated);
-      localStorage.setItem('family_grocery_subtypes_v3', JSON.stringify(updated));
-      setEditingSubtypeId(null);
     } else {
-      // Add new custom option
-      const newSub: GrocerySubtype = {
+      const newItem: CategorySubtype = {
         id: `custom_${Date.now()}`,
         label: optionLabel.trim(),
-        emoji: optionEmoji.trim() || '🛒',
+        emoji: optionEmoji.trim() || '🏷️',
         defaultNotes: optionNotes.trim() || `${optionLabel.trim()} item type`,
         isCustom: true,
       };
-      const updated = [...grocerySubtypesList, newSub];
-      setGrocerySubtypesList(updated);
-      localStorage.setItem('family_grocery_subtypes_v3', JSON.stringify(updated));
+      updatedList = [newItem, ...currentList];
     }
 
+    const updatedMap = {
+      ...categorySubtypesMap,
+      [category]: updatedList,
+    };
+
+    setCategorySubtypesMap(updatedMap);
+    localStorage.setItem('family_category_subtypes_map_v2', JSON.stringify(updatedMap));
+
+    setEditingSubtypeId(null);
     setOptionLabel('');
     setOptionNotes('');
-    setOptionEmoji('🛒');
+    setOptionEmoji('🏷️');
   };
 
-  const startEditingSubtype = (sub: GrocerySubtype) => {
+  const startEditingSubtype = (sub: CategorySubtype) => {
     setEditingSubtypeId(sub.id);
     setOptionLabel(sub.label);
     setOptionEmoji(sub.emoji);
@@ -121,25 +207,36 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
     setIsManagingOptions(true);
   };
 
-  const handleDeleteGrocerySubtype = (id: string) => {
-    const updated = grocerySubtypesList.filter((s) => s.id !== id);
-    setGrocerySubtypesList(updated);
-    localStorage.setItem('family_grocery_subtypes_v3', JSON.stringify(updated));
+  const handleDeleteCategorySubtype = (id: string) => {
+    const currentList = categorySubtypesMap[category] || [];
+    const updatedList = currentList.filter((item) => item.id !== id);
+    const updatedMap = {
+      ...categorySubtypesMap,
+      [category]: updatedList,
+    };
+    setCategorySubtypesMap(updatedMap);
+    localStorage.setItem('family_category_subtypes_map_v2', JSON.stringify(updatedMap));
+
     if (editingSubtypeId === id) {
       setEditingSubtypeId(null);
       setOptionLabel('');
       setOptionNotes('');
-      setOptionEmoji('🛒');
+      setOptionEmoji('🏷️');
     }
   };
 
-  const handleResetDefaultGrocerySubtypes = () => {
-    setGrocerySubtypesList(GROCERY_SUBTYPES);
-    localStorage.setItem('family_grocery_subtypes_v3', JSON.stringify(GROCERY_SUBTYPES));
+  const handleResetCategorySubtypes = () => {
+    const defaultList = CATEGORY_SUBTYPES_MAP[category] || [];
+    const updatedMap = {
+      ...categorySubtypesMap,
+      [category]: defaultList,
+    };
+    setCategorySubtypesMap(updatedMap);
+    localStorage.setItem('family_category_subtypes_map_v2', JSON.stringify(updatedMap));
     setEditingSubtypeId(null);
     setOptionLabel('');
     setOptionNotes('');
-    setOptionEmoji('🛒');
+    setOptionEmoji('🏷️');
   };
 
   useEffect(() => {
@@ -147,11 +244,6 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
       setAmount(initialData.amount.toString());
       const rawCat = initialData.category === 'Grocery' ? 'Groceries' : initialData.category;
       setCategory(rawCat as CategoryId);
-      if (rawCat === 'SIP') {
-        setExpenseType('sip');
-      } else {
-        setExpenseType('grocery');
-      }
       setPaidBy(initialData.paidBy);
       setDate(initialData.date || new Date().toISOString().split('T')[0]);
       setTime(initialData.time || getCurrentTimeStr());
@@ -159,7 +251,6 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
     } else {
       setAmount('');
       setCategory('Groceries');
-      setExpenseType('grocery');
       setPaidBy(activeMember);
       setDate(new Date().toISOString().split('T')[0]);
       setTime(getCurrentTimeStr());
@@ -241,7 +332,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
       return;
     }
 
-    const finalCategory: CategoryId = expenseType === 'grocery' ? 'Groceries' : expenseType === 'sip' ? 'SIP' : category;
+    const finalCategory: CategoryId = category;
 
     setIsSubmitting(true);
     try {
@@ -411,46 +502,129 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             </div>
           )}
 
-          {/* STEP 1: Expense Type & Amount */}
+          {/* STEP 1: Expense Category & Amount */}
           {currentStep === 1 && (
             <div className="space-y-3 animate-fade-in">
-              {/* Type Switcher */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
-                  Expense Category Type
-                </label>
-                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpenseType('grocery');
-                      setCategory('Groceries');
-                    }}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      expenseType === 'grocery'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{t('groceryType', language)}</span>
-                  </button>
+              {/* Optional Quick Description Input for Gemini AI Category Auto-Suggestion */}
+              <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-slate-50/90 dark:from-indigo-950/70 dark:via-purple-950/60 dark:to-slate-900 border border-indigo-200/80 dark:border-indigo-800 rounded-2xl space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+                    <span>Gemini AI Auto-Category Suggester</span>
+                  </label>
+                  {isAiSuggesting && (
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 animate-pulse">
+                      <Sparkles className="w-3 h-3 animate-spin" />
+                      Analyzing...
+                    </span>
+                  )}
+                </div>
 
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="Type description e.g. Zomato dinner, Petrol, Blinkit milk, Electricity bill..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full pl-3 pr-20 py-1.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                  />
                   <button
                     type="button"
-                    onClick={() => {
-                      setExpenseType('sip');
-                      setCategory('SIP');
-                    }}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      expenseType === 'sip'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
+                    onClick={() => handleFetchAiSuggestion(notes)}
+                    disabled={isAiSuggesting || !notes.trim()}
+                    className="absolute right-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                   >
-                    <TrendingUp className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{t('sipType', language)}</span>
+                    <Sparkles className="w-3 h-3" />
+                    <span>Ask AI</span>
                   </button>
+                </div>
+
+                {/* AI Suggestion Output Banner */}
+                {aiSuggestedCategory && (
+                  <div className="p-2.5 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 dark:text-white">
+                          <span>AI Suggested:</span>
+                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[11px] font-black">
+                            {getCategoryLabel(aiSuggestedCategory.category, language)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-medium">
+                          {aiSuggestedCategory.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    {category !== aiSuggestedCategory.category ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategory(aiSuggestedCategory.category);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Apply</span>
+                      </button>
+                    ) : (
+                      <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black rounded-lg shrink-0 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Applied</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Category Grid Switcher */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                    Select Expense Category ({CATEGORIES.length} Categories)
+                  </label>
+                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400">
+                    Selected: {getCategoryLabel(category, language)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-1.5 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = category === cat.id;
+                    const isAiRecommended = aiSuggestedCategory?.category === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          setCategory(cat.id);
+                        }}
+                        className={`p-2 rounded-xl text-left text-xs font-black transition-all cursor-pointer flex items-center gap-2 border relative ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400'
+                            : isAiRecommended
+                            ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-900 dark:text-purple-200 border-purple-400 dark:border-purple-600 ring-2 ring-purple-300'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700 hover:bg-indigo-50/70 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className={`p-1 rounded-lg shrink-0 ${
+                          isSelected ? 'bg-white/20 text-white' : isAiRecommended ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
+                        }`}>
+                          {getCategoryIconComponent(cat.icon)}
+                        </div>
+                        <div className="truncate min-w-0 flex-1">
+                          <span className="truncate block leading-tight text-[11px]">{getCategoryLabel(cat.id, language)}</span>
+                          {isAiRecommended && !isSelected && (
+                            <span className="text-[8.5px] font-black text-purple-600 dark:text-purple-300 block leading-tight">✨ AI Match</span>
+                          )}
+                        </div>
+                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -623,83 +797,46 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             </div>
           )}
 
-          {/* STEP 3: Details & Notes / Confirmation */}
+          {/* STEP 3: Details & Notes / Subsections */}
           {currentStep === 3 && (
             <div className="space-y-3 animate-fade-in">
-              {/* Popular SIP Mutual Funds Picker */}
-              {expenseType === 'sip' && (
-                <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-2xl space-y-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                    <TrendingUp className="w-4 h-4 text-emerald-600" />
-                    Select Popular SIP / Mutual Fund Option:
-                  </span>
-                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                    {POPULAR_SIP_FUNDS.map((fund) => {
-                      const isMatch = notes.includes(fund.label);
-                      return (
-                        <button
-                          key={fund.label}
-                          type="button"
-                          onClick={() => {
-                            setNotes(fund.defaultNotes);
-                          }}
-                          className={`p-2 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            isMatch
-                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-emerald-200 dark:border-emerald-900 hover:bg-emerald-100/60 dark:hover:bg-slate-700'
-                          }`}
-                        >
-                          <span className="text-sm shrink-0">{fund.emoji}</span>
-                          <span className="truncate text-[11px]">{fund.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Family Grocery Options & Sub-Types Selector */}
-              {expenseType === 'grocery' && (
-                <div className={`bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-xl transition-all ${
-                  groceryBoxSize === 'sm' ? 'p-2 space-y-1.5' : groceryBoxSize === 'md' ? 'p-3 space-y-2.5' : 'p-4 space-y-3.5'
-                }`}>
-                  <div className="flex items-center justify-between gap-1 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200 flex items-center gap-1">
-                        <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
-                        Grocery Subsection:
+              {/* Category Subsections & Quick Options Box */}
+              <div className={`bg-gradient-to-br from-indigo-50/90 via-slate-50/50 to-indigo-100/60 dark:from-slate-950/80 dark:via-slate-900 dark:to-indigo-950/50 border border-indigo-200 dark:border-indigo-900/80 rounded-2xl transition-all shadow-sm ${
+                groceryBoxSize === 'sm' ? 'p-2.5 space-y-2' : groceryBoxSize === 'md' ? 'p-3.5 space-y-3' : 'p-4 space-y-4'
+              }`}>
+                {/* Header Row */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-600 text-white rounded-xl shadow-2xs">
+                      {getCategoryIconComponent(CATEGORIES.find(c => c.id === category)?.icon || 'Tag')}
+                    </div>
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider text-indigo-950 dark:text-indigo-200 block leading-none">
+                        {getCategoryLabel(category, language)} Subsections & Options
                       </span>
+                      <span className="text-[10px] text-indigo-700 dark:text-indigo-400 font-bold">
+                        Select options to auto-tag your expense description
+                      </span>
+                    </div>
+                  </div>
 
-                      {/* Box Size Toggle */}
-                      <div className="inline-flex items-center bg-emerald-200/70 dark:bg-emerald-900/80 rounded-md p-0.5 text-[9px] font-extrabold border border-emerald-300/60 dark:border-emerald-800" title="Option to resize Grocery Subsection box">
+                  <div className="flex items-center gap-1.5">
+                    {/* Box Size Toggle */}
+                    <div className="inline-flex items-center bg-white/80 dark:bg-slate-800 rounded-lg p-0.5 text-[9px] font-extrabold border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                      {(['sm', 'md', 'lg'] as const).map((sz) => (
                         <button
+                          key={sz}
                           type="button"
-                          onClick={() => setGroceryBoxSize('sm')}
-                          className={`px-1.5 py-0.2 rounded transition-all cursor-pointer ${
-                            groceryBoxSize === 'sm' ? 'bg-emerald-700 text-white font-black shadow-2xs' : 'text-emerald-800 dark:text-emerald-200 hover:text-black dark:hover:text-white'
+                          onClick={() => setGroceryBoxSize(sz)}
+                          className={`px-1.5 py-0.5 rounded uppercase transition-all cursor-pointer ${
+                            groceryBoxSize === sz
+                              ? 'bg-indigo-600 text-white font-black shadow-2xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:text-indigo-700'
                           }`}
                         >
-                          S
+                          {sz}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setGroceryBoxSize('md')}
-                          className={`px-1.5 py-0.2 rounded transition-all cursor-pointer ${
-                            groceryBoxSize === 'md' ? 'bg-emerald-700 text-white font-black shadow-2xs' : 'text-emerald-800 dark:text-emerald-200 hover:text-black dark:hover:text-white'
-                          }`}
-                        >
-                          M
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGroceryBoxSize('lg')}
-                          className={`px-1.5 py-0.2 rounded transition-all cursor-pointer ${
-                            groceryBoxSize === 'lg' ? 'bg-emerald-700 text-white font-black shadow-2xs' : 'text-emerald-800 dark:text-emerald-200 hover:text-black dark:hover:text-white'
-                          }`}
-                        >
-                          L
-                        </button>
-                      </div>
+                      ))}
                     </div>
 
                     <button
@@ -710,132 +847,276 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                           setEditingSubtypeId(null);
                           setOptionLabel('');
                           setOptionNotes('');
-                          setOptionEmoji('🛒');
+                          setOptionEmoji('🏷️');
                         }
                       }}
-                      className="px-2 py-0.5 bg-emerald-200/80 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 rounded-lg text-[10px] font-black hover:bg-emerald-300 transition-colors flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1 bg-white dark:bg-slate-800 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700 rounded-lg text-[10px] font-black hover:bg-indigo-100/80 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
                     >
-                      <Settings2 className="w-3 h-3" />
-                      <span>{isManagingOptions ? 'Close Editor' : '✏️ Options'}</span>
+                      <Settings2 className="w-3 h-3 text-indigo-600" />
+                      <span>{isManagingOptions ? 'Close Editor' : '✏️ Options Editor'}</span>
                     </button>
                   </div>
+                </div>
 
-                  {/* Add / Edit Grocery Item Type Form Drawer */}
-                  {isManagingOptions && (
-                    <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-emerald-300 dark:border-emerald-800 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <p className="font-extrabold text-emerald-900 dark:text-emerald-200 text-[10px] flex items-center gap-1">
-                          <Pencil className="w-3 h-3 text-emerald-600" />
-                          <span>{editingSubtypeId ? 'Edit Option:' : 'Add New Option:'}</span>
-                        </p>
+                {/* Search Bar & Clear Button */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-indigo-600 dark:text-indigo-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder={`Search ${category} options...`}
+                        value={grocerySearchQuery}
+                        onChange={(e) => setGrocerySearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-2.5 py-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      {grocerySearchQuery && (
                         <button
                           type="button"
-                          onClick={handleResetDefaultGrocerySubtypes}
-                          className="text-[10px] text-slate-500 hover:text-emerald-700 underline font-semibold flex items-center gap-0.5 cursor-pointer"
+                          onClick={() => setGrocerySearchQuery('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs font-black p-0.5"
                         >
-                          <RotateCcw className="w-2.5 h-2.5" />
-                          Reset Defaults
+                          ✕
                         </button>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="Emoji"
-                          value={optionEmoji}
-                          onChange={(e) => setOptionEmoji(e.target.value)}
-                          className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-center text-slate-900 dark:text-white"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Option Name"
-                          value={optionLabel}
-                          onChange={(e) => setOptionLabel(e.target.value)}
-                          className="col-span-2 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-slate-900 dark:text-white"
-                          required
-                        />
-                      </div>
-
-                      <div className="flex justify-end gap-1.5 pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSaveGrocerySubtype}
-                          className="px-2.5 py-1 bg-emerald-600 text-white font-black rounded-lg text-xs hover:bg-emerald-700 cursor-pointer"
-                        >
-                          <span>{editingSubtypeId ? 'Update' : '+ Save'}</span>
-                        </button>
-                      </div>
+                      )}
                     </div>
-                  )}
 
-                  {/* Dynamic Subtype Pills Container */}
-                  <div className={`flex flex-wrap gap-1.5 overflow-y-auto pr-1 transition-all ${
-                    groceryBoxSize === 'sm' ? 'max-h-24' : groceryBoxSize === 'md' ? 'max-h-40' : 'max-h-60'
-                  }`}>
-                    {grocerySubtypesList.map((sub) => {
+                    {/* Clear Selected Tags */}
+                    {(categorySubtypesMap[category] || []).some(sub => notes.includes(`[${sub.label}]`)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          let cleanedNotes = notes;
+                          (categorySubtypesMap[category] || []).forEach(sub => {
+                            cleanedNotes = cleanedNotes.replace(`[${sub.label}]`, '').replace(sub.defaultNotes, '');
+                          });
+                          setNotes(cleanedNotes.trim());
+                        }}
+                        className="px-2 py-1 bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 rounded-lg text-[10px] font-black hover:bg-rose-200 transition-colors shrink-0 cursor-pointer"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Form Drawer for Custom Category Subtype */}
+                {isManagingOptions && (
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border-2 border-indigo-400 dark:border-indigo-700 space-y-2 text-xs shadow-md animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <p className="font-extrabold text-indigo-900 dark:text-indigo-200 text-xs flex items-center gap-1">
+                        <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>{editingSubtypeId ? `Edit ${category} Option:` : `Add Custom ${category} Option:`}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleResetCategorySubtypes}
+                        className="text-[10px] text-slate-500 hover:text-indigo-700 underline font-extrabold flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        Reset Category Defaults
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Emoji"
+                        value={optionEmoji}
+                        onChange={(e) => setOptionEmoji(e.target.value)}
+                        className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-center text-slate-900 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Option Name"
+                        value={optionLabel}
+                        onChange={(e) => setOptionLabel(e.target.value)}
+                        className="col-span-3 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-slate-900 dark:text-white"
+                        required
+                      />
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Default description notes (optional)"
+                      value={optionNotes}
+                      onChange={(e) => setOptionNotes(e.target.value)}
+                      className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-slate-900 dark:text-white text-[11px]"
+                    />
+
+                    <div className="flex justify-end gap-1.5 pt-1">
+                      {editingSubtypeId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSubtypeId(null);
+                            setOptionLabel('');
+                            setOptionNotes('');
+                            setOptionEmoji('🏷️');
+                          }}
+                          className="px-2.5 py-1 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-bold rounded-lg text-xs cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSaveCategorySubtype}
+                        className="px-3 py-1 bg-indigo-600 text-white font-black rounded-lg text-xs hover:bg-indigo-700 cursor-pointer shadow-2xs"
+                      >
+                        <span>{editingSubtypeId ? 'Update Option' : '+ Save Custom Option'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dynamic Category Subtypes Grid */}
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-1.5 overflow-y-auto pr-1 transition-all ${
+                  groceryBoxSize === 'sm' ? 'max-h-36' : groceryBoxSize === 'md' ? 'max-h-52' : 'max-h-72'
+                }`}>
+                  {(categorySubtypesMap[category] || [])
+                    .filter((sub) => {
+                      if (!grocerySearchQuery.trim()) return true;
+                      const q = grocerySearchQuery.toLowerCase();
+                      return sub.label.toLowerCase().includes(q) || sub.defaultNotes.toLowerCase().includes(q);
+                    })
+                    .map((sub) => {
                       const tag = `[${sub.label}]`;
                       const isMatch = notes.includes(tag) || notes.includes(sub.label);
                       return (
                         <div
                           key={sub.id}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-bold transition-all ${
+                          className={`p-2 rounded-xl border text-left text-xs font-black transition-all flex items-center justify-between gap-1 group cursor-pointer ${
                             isMatch
-                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
-                              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-emerald-200 dark:border-emerald-900 hover:bg-emerald-100/80 dark:hover:bg-slate-700'
+                              ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400'
+                              : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-indigo-200/80 dark:border-indigo-900 hover:bg-indigo-100/80 dark:hover:bg-slate-800'
                           }`}
+                          onClick={() => {
+                            if (notes.includes(tag)) {
+                              setNotes(notes.replace(tag, '').trim());
+                            } else {
+                              setNotes(`${tag} ${sub.defaultNotes}`.trim());
+                            }
+                          }}
                         >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (notes.includes(tag)) {
-                                setNotes(notes.replace(tag, '').trim());
-                              } else {
-                                setNotes(`${tag} ${sub.defaultNotes}`.trim());
-                              }
-                            }}
-                            className="cursor-pointer flex items-center gap-1"
-                          >
-                            <span className="text-xs">{sub.emoji}</span>
-                            <span>{sub.label}</span>
-                          </button>
-
-                          {isManagingOptions && (
-                            <div className="flex items-center gap-0.5 border-l border-emerald-300 dark:border-emerald-700 ml-1 pl-1">
-                              <button
-                                type="button"
-                                onClick={() => startEditingSubtype(sub)}
-                                className="p-0.5 hover:text-indigo-600 cursor-pointer"
-                              >
-                                <Pencil className="w-2.5 h-2.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteGrocerySubtype(sub.id)}
-                                className="p-0.5 hover:text-rose-600 cursor-pointer"
-                              >
-                                <Trash2 className="w-2.5 h-2.5" />
-                              </button>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="text-base shrink-0">{sub.emoji}</span>
+                            <div className="truncate min-w-0">
+                              <span className="truncate block text-xs font-black leading-tight">
+                                {sub.label}
+                              </span>
+                              <span className={`text-[9.5px] block truncate font-medium ${
+                                isMatch ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
+                              }`}>
+                                {sub.defaultNotes}
+                              </span>
                             </div>
-                          )}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isMatch && (
+                              <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+                            )}
+
+                            {isManagingOptions && (
+                              <div className="flex items-center gap-0.5 border-l border-indigo-300 dark:border-indigo-700 pl-1" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingSubtype(sub)}
+                                  className="p-1 hover:text-indigo-200 cursor-pointer"
+                                  title="Edit option"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCategorySubtype(sub.id)}
+                                  className="p-1 hover:text-rose-300 cursor-pointer"
+                                  title="Delete option"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
-                  </div>
                 </div>
-              )}
+              </div>
 
-              {/* Notes Field */}
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
-                  Notes / Item Description (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Purchased monthly rations from Supermarket"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-extrabold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
-                />
+              {/* Notes Field with Gemini AI Auto-Categorizer */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    Notes / Item Description (Automated Gemini AI Categorization)
+                  </label>
+                  {isAiSuggesting && (
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 animate-pulse">
+                      <Sparkles className="w-3 h-3 animate-spin" />
+                      Gemini Analyzing...
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="e.g. Purchased monthly rations from Supermarket, Zomato order, Petrol fill..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full pl-3 pr-20 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-extrabold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleFetchAiSuggestion(notes)}
+                    disabled={isAiSuggesting || !notes.trim()}
+                    className="absolute right-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Ask AI</span>
+                  </button>
+                </div>
+
+                {/* AI Suggestion Output Banner */}
+                {aiSuggestedCategory && (
+                  <div className="p-2.5 bg-indigo-50/90 dark:bg-slate-900 border-2 border-indigo-500 rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-slate-900 dark:text-white">
+                          <span>AI Suggested Category:</span>
+                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[11px] font-black">
+                            {getCategoryLabel(aiSuggestedCategory.category, language)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-300 truncate font-medium">
+                          {aiSuggestedCategory.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    {category !== aiSuggestedCategory.category ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategory(aiSuggestedCategory.category);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Apply Category</span>
+                      </button>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black rounded-lg shrink-0 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Category Applied</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Quick Summary Card */}
