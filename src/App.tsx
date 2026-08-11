@@ -564,29 +564,110 @@ export default function App() {
       return;
     }
 
+    // 1. Update family members list
     const newMembers = familyMembers.filter((m) => m !== memberName);
     setFamilyMembers(newMembers);
     localStorage.setItem('family_members_list', JSON.stringify(newMembers));
 
+    // 2. Update member configs map
     const updatedConfigs = { ...memberConfigs };
     delete updatedConfigs[memberName];
     setMemberConfigs(updatedConfigs);
     localStorage.setItem('family_member_configs', JSON.stringify(updatedConfigs));
 
+    // 3. Update active member if necessary
     if (activeMember === memberName) {
       const nextMember = newMembers[0] || 'Amir Khan';
-      setActiveMember(nextMember);
+      setActiveMember(nextMember as FamilyMember);
       localStorage.setItem('family_active_member', nextMember);
     }
 
+    // 4. Delete all expenses associated with member
+    const expensesToDelete = expenses.filter(
+      (e) => e.paidBy === memberName || e.addedByMember === memberName
+    );
+    const newExpenses = expenses.filter(
+      (e) => e.paidBy !== memberName && e.addedByMember !== memberName
+    );
+    setExpenses(newExpenses);
+    localStorage.setItem('family_expenses_cache', JSON.stringify(newExpenses));
+
+    // 5. Delete all EMIs associated with member
+    const emisToDelete = emis.filter((e) => e.paidBy === memberName);
+    const newEmis = emis.filter((e) => e.paidBy !== memberName);
+    setEmis(newEmis);
+    localStorage.setItem('family_emis_cache', JSON.stringify(newEmis));
+
+    // 6. Delete all SIPs associated with member
+    const sipsToDelete = sips.filter(
+      (s) => s.paidBy === memberName || s.addedByMember === memberName
+    );
+    const newSips = sips.filter(
+      (s) => s.paidBy !== memberName && s.addedByMember !== memberName
+    );
+    setSips(newSips);
+    localStorage.setItem('family_sips_cache', JSON.stringify(newSips));
+
+    // 7. Delete all Debts associated with member
+    const debtsToDelete = debts.filter(
+      (d) => d.personName === memberName || d.fromMember === memberName || d.toMember === memberName
+    );
+    const newDebts = debts.filter(
+      (d) => d.personName !== memberName && d.fromMember !== memberName && d.toMember !== memberName
+    );
+    setDebts(newDebts);
+    localStorage.setItem('family_debts_cache', JSON.stringify(newDebts));
+
+    // 8. Delete member bank account / bank amount data
+    const updatedBankAmounts = { ...memberBankAmounts };
+    delete updatedBankAmounts[memberName];
+    setMemberBankAmounts(updatedBankAmounts);
+    localStorage.setItem('family_member_bank_amounts_cache', JSON.stringify(updatedBankAmounts));
+
+    // 9. Clean up member trend overrides from localStorage
+    try {
+      const savedTrendOverrides = localStorage.getItem('family_member_trend_overrides');
+      if (savedTrendOverrides) {
+        const trendMap = JSON.parse(savedTrendOverrides);
+        let modified = false;
+        Object.keys(trendMap).forEach((monthKey) => {
+          if (trendMap[monthKey] && trendMap[monthKey][memberName] !== undefined) {
+            delete trendMap[monthKey][memberName];
+            modified = true;
+          }
+        });
+        if (modified) {
+          localStorage.setItem('family_member_trend_overrides', JSON.stringify(trendMap));
+        }
+      }
+    } catch (e) {
+      console.warn('Error clearing member trend overrides from localStorage:', e);
+    }
+
+    // 10. Sync all removals to Firestore simultaneously
     try {
       await setDoc(doc(db, 'settings', 'familyMembersConfig'), {
         members: newMembers,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
+
       await deleteDoc(doc(db, 'memberConfigs', memberName));
+      await deleteDoc(doc(db, 'memberBankAmounts', memberName));
+
+      for (const exp of expensesToDelete) {
+        await deleteDoc(doc(db, 'expenses', exp.id));
+      }
+      for (const emi of emisToDelete) {
+        await deleteDoc(doc(db, 'emis', emi.id));
+      }
+      for (const sip of sipsToDelete) {
+        await deleteDoc(doc(db, 'sips', sip.id));
+      }
+      for (const debt of debtsToDelete) {
+        await deleteDoc(doc(db, 'debts', debt.id));
+      }
     } catch (err) {
-      console.warn('Error removing member from Firestore:', err);
+      console.warn('Error removing member and associated data from Firestore:', err);
     }
   };
 
@@ -1128,7 +1209,7 @@ export default function App() {
   const zeroAllMemberBankBalances = async () => {
     try {
       const bankRef = collection(db, 'memberBankAmounts');
-      for (const member of FAMILY_MEMBERS) {
+      for (const member of familyMembers) {
         const docRef = doc(bankRef, member);
         const defaults = DEFAULT_MEMBER_BANK_AMOUNTS[member] || {
           member,
@@ -1153,7 +1234,7 @@ export default function App() {
       }
       setMemberBankAmounts((prev) => {
         const updated = { ...prev };
-        for (const member of FAMILY_MEMBERS) {
+        for (const member of familyMembers) {
           if (updated[member]) {
             updated[member] = {
               ...updated[member],
@@ -1174,7 +1255,7 @@ export default function App() {
   const seedInitialBankAmounts = async () => {
     try {
       const bankRef = collection(db, 'memberBankAmounts');
-      for (const member of FAMILY_MEMBERS) {
+      for (const member of familyMembers) {
         const docRef = doc(bankRef, member);
         await setDoc(docRef, {
           ...DEFAULT_MEMBER_BANK_AMOUNTS[member],
@@ -2045,6 +2126,7 @@ export default function App() {
               memberConfigs={memberConfigs}
               onRestoreExpenses={handleRestoreExpenses}
               onOpenExportImport={() => setIsExportImportModalOpen(true)}
+              activeMember={activeMember}
             />
           )}
 
@@ -2098,10 +2180,12 @@ export default function App() {
 
           {/* Bottom App Footer Section with Export / Import */}
           <div className="mt-10 pt-6 pb-4 border-t border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Family Expense Tracker</span>
-              <span>•</span>
-              <span>Data Export & Backup Tools</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700/70">
+                This application is invented and crafted by Amir Khan
+              </span>
             </div>
 
             <button
