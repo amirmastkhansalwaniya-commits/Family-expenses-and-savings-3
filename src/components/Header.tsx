@@ -96,13 +96,17 @@ export const Header: React.FC<HeaderProps> = ({
                     {t('currencyTag', language)}
                   </span>
                 </div>
-                <div className={`flex items-center space-x-2 text-xs font-semibold mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   <span className="flex items-center gap-1.5">
                     <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`}></span>
                     {isSyncing ? t('syncing', language) : t('realtimeSync', language)}
                   </span>
                   <span>•</span>
                   <span>{totalExpensesCount} {t('entries', language)}</span>
+                  <span className="hidden sm:inline">•</span>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 italic">
+                    Invented & crafted by Amir Khan
+                  </span>
                 </div>
               </div>
             </div>
