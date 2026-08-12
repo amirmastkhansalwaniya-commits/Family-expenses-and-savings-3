@@ -70,7 +70,9 @@ export {
   serverTimestamp
 };
 
-// नया जोड़ा गया फ़ंक्शन (Vercel बिल्ड एरर को ठीक करने के लिए)
+// एरर ठीक करने के लिए जोड़े गए एक्सपोर्ट्स
 export const handleFirestoreError = (error: any) => {
   console.error("Firestore Error: ", error);
 };
+
+export type OperationType = any;
