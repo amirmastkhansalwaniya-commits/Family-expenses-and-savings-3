@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, MEMBER_THEMES, MemberCustomConfig, getMemberTheme } from '../types';
 import { formatINR, formatDateDisplay } from '../utils/formatters';
 import { MemberAvatar } from './MemberAvatar';
@@ -667,108 +668,124 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
 
       {/* Transaction Feed */}
       <div className="space-y-3">
-        {filtered.map((exp) => {
-          const memberTheme = MEMBER_THEMES[exp.paidBy as FamilyMember];
-          const catConfig = CATEGORY_UI_CONFIG[exp.category] || CATEGORY_UI_CONFIG['Others'];
-          const CatIcon = catConfig.Icon;
+        <AnimatePresence mode="popLayout">
+          {filtered.map((exp, index) => {
+            const memberTheme = MEMBER_THEMES[exp.paidBy as FamilyMember];
+            const catConfig = CATEGORY_UI_CONFIG[exp.category] || CATEGORY_UI_CONFIG['Others'];
+            const CatIcon = catConfig.Icon;
 
-          return (
-            <div
-              key={exp.id}
-              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
-            >
-              {/* Left Info */}
-              <div className="flex items-start gap-3.5">
-                {/* Visual Category Icon Badge with Member Avatar Overlay */}
-                <div className="relative shrink-0">
-                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${catConfig.bg} ${catConfig.border} ${catConfig.text}`}>
-                    <CatIcon className="w-5.5 h-5.5 stroke-[2.2]" />
-                  </div>
-                  {memberTheme && (
-                    <div 
-                      className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-slate-900 shadow-2xs ${memberTheme.avatarBg}`}
-                      title={`Paid by ${exp.paidBy}`}
-                    >
-                      {memberTheme.initials}
+            return (
+              <motion.div
+                key={`txn-log-${exp.id || 'no-id'}-${index}`}
+                layout
+                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -12, scale: 0.96 }}
+                transition={{
+                  duration: 0.22,
+                  delay: Math.min(index * 0.03, 0.3),
+                  ease: [0.25, 0.1, 0.25, 1.0],
+                }}
+                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
+              >
+                {/* Left Info */}
+                <div className="flex items-start gap-3.5">
+                  {/* Visual Category Icon Badge with Member Avatar Overlay */}
+                  <div className="relative shrink-0">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${catConfig.bg} ${catConfig.border} ${catConfig.text}`}>
+                      <CatIcon className="w-5.5 h-5.5 stroke-[2.2]" />
                     </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center flex-wrap gap-2">
-                    <span className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                      <CatIcon className={`w-4 h-4 ${catConfig.text} hidden sm:inline-block`} />
-                      <span>{getCategoryLabel(exp.category, language)}</span>
-                    </span>
                     {memberTheme && (
-                      <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border flex items-center gap-1 ${memberTheme.badgeBg} ${memberTheme.badgeText}`}>
-                        <span>{memberTheme.emoji}</span>
-                        <span>Paid by {exp.paidBy}</span>
-                      </span>
-                    )}
-                    {exp.notes && exp.notes.startsWith('[') && exp.notes.includes(']') && (
-                      <span className="px-2 py-0.5 text-[11px] font-black rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-                        <span>🛒</span>
-                        <span>{exp.notes.slice(1, exp.notes.indexOf(']'))}</span>
-                      </span>
+                      <div 
+                        className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-slate-900 shadow-2xs ${memberTheme.avatarBg}`}
+                        title={`Paid by ${exp.paidBy}`}
+                      >
+                        {memberTheme.initials}
+                      </div>
                     )}
                   </div>
 
-                  {exp.notes && (
-                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
-                      {exp.notes}
-                    </p>
-                  )}
+                  <div>
+                    <div className="flex items-center flex-wrap gap-2">
+                      <span className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                        <CatIcon className={`w-4 h-4 ${catConfig.text} hidden sm:inline-block`} />
+                        <span>{getCategoryLabel(exp.category, language)}</span>
+                      </span>
+                      {memberTheme && (
+                        <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border flex items-center gap-1 ${memberTheme.badgeBg} ${memberTheme.badgeText}`}>
+                          <span>{memberTheme.emoji}</span>
+                          <span>Paid by {exp.paidBy}</span>
+                        </span>
+                      )}
+                      {exp.notes && exp.notes.startsWith('[') && exp.notes.includes(']') && (
+                        <span className="px-2 py-0.5 text-[11px] font-black rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                          <span>🛒</span>
+                          <span>{exp.notes.slice(1, exp.notes.indexOf(']'))}</span>
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-400 mt-1 font-mono font-bold">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-slate-400" />
-                      {formatDateDisplay(exp.date)}
+                    {exp.notes && (
+                      <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
+                        {exp.notes}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-400 mt-1 font-mono font-bold">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        {formatDateDisplay(exp.date)}
+                      </span>
+                      {exp.time && (
+                        <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                          <Clock className="w-3 h-3 text-indigo-500" />
+                          {exp.time}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Amount & Actions */}
+                <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
+                  <div className="text-right">
+                    <span className="text-lg font-black text-slate-900 font-mono block">
+                      {formatINR(exp.amount)}
                     </span>
-                    {exp.time && (
-                      <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                        <Clock className="w-3 h-3 text-indigo-500" />
-                        {exp.time}
-                      </span>
-                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onEditExpense(exp)}
+                      title="Edit expense"
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setExpenseToDelete(exp)}
+                      disabled={deletingId === exp.id}
+                      title="Delete expense"
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-500" />
+                    </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Right Amount & Actions */}
-              <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
-                <div className="text-right">
-                  <span className="text-lg font-black text-slate-900 font-mono block">
-                    {formatINR(exp.amount)}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => onEditExpense(exp)}
-                    title="Edit expense"
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={() => setExpenseToDelete(exp)}
-                    disabled={deletingId === exp.id}
-                    title="Delete expense"
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-500" />
-                  </button>
-                </div>
-              </div>
-
-            </div>
-          );
-        })}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
 
         {filtered.length === 0 && (
-          <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center space-y-3 shadow-xs">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white border border-slate-100 rounded-2xl p-12 text-center space-y-3 shadow-xs"
+          >
             <AlertCircle className="w-10 h-10 text-slate-400 mx-auto" />
             <h3 className="text-base font-black text-slate-900">No Expenses Found</h3>
             <p className="text-xs font-medium text-slate-500 max-w-sm mx-auto">
@@ -783,7 +800,7 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                 <RotateCcw className="w-3.5 h-3.5" /> Reset Filters
               </button>
             )}
-          </div>
+          </motion.div>
         )}
       </div>
 
