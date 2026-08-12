@@ -1930,6 +1930,48 @@ export default function App() {
     }
   };
 
+  // Refresh and immediately apply restored data to React UI state
+  const handleRefreshData = (importedData?: any) => {
+    if (importedData) {
+      if (Array.isArray(importedData.expenses)) {
+        setExpenses(importedData.expenses);
+        localStorage.setItem('family_expenses_cache', JSON.stringify(importedData.expenses));
+      }
+      if (Array.isArray(importedData.emis)) {
+        setEmis(importedData.emis);
+        localStorage.setItem('family_emis_cache', JSON.stringify(importedData.emis));
+      }
+      if (Array.isArray(importedData.sips)) {
+        setSips(importedData.sips);
+        localStorage.setItem('family_sips_cache', JSON.stringify(importedData.sips));
+      }
+      if (Array.isArray(importedData.debts)) {
+        setDebts(importedData.debts);
+        localStorage.setItem('family_debts_cache', JSON.stringify(importedData.debts));
+      }
+      if (importedData.memberBankAmounts && typeof importedData.memberBankAmounts === 'object') {
+        setMemberBankAmounts(importedData.memberBankAmounts);
+        localStorage.setItem('family_member_bank_amounts_cache', JSON.stringify(importedData.memberBankAmounts));
+      }
+      if (typeof importedData.monthlyBudget === 'number') {
+        setMonthlyBudget(importedData.monthlyBudget);
+        localStorage.setItem('family_monthly_budget_cache', String(importedData.monthlyBudget));
+      }
+      if (importedData.adminPin) {
+        setAdminPin(importedData.adminPin);
+        localStorage.setItem('admin_pin_code', importedData.adminPin);
+      }
+      if (Array.isArray(importedData.familyMembers) && importedData.familyMembers.length > 0) {
+        setFamilyMembers(importedData.familyMembers);
+        localStorage.setItem('family_members_list', JSON.stringify(importedData.familyMembers));
+      }
+      if (importedData.memberConfigs) {
+        setMemberConfigs(importedData.memberConfigs);
+        localStorage.setItem('family_member_configs', JSON.stringify(importedData.memberConfigs));
+      }
+    }
+  };
+
   // Full PIN-Protected App Reset Handler
   const handleResetApp = async () => {
     try {
@@ -2329,6 +2371,7 @@ export default function App() {
         language={language}
         familyMembers={familyMembers}
         memberConfigs={memberConfigs}
+        onRefreshData={handleRefreshData}
         onResetApp={handleResetApp}
       />
 
