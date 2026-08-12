@@ -676,7 +676,7 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
 
             return (
               <motion.div
-                key={exp.id}
+                key={`txn-log-${exp.id || 'no-id'}-${index}`}
                 layout
                 initial={{ opacity: 0, y: 12, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
