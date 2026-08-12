@@ -8,33 +8,24 @@ import {
   Database,
   CheckCircle2,
   AlertCircle,
-  FileJson,
-  Calendar,
-  Layers,
   RefreshCw,
-  ArrowRight,
   RotateCcw,
-  Users
+  ShieldAlert,
+  FileCheck,
+  Layers
 } from 'lucide-react';
 import { Expense, FamilyMember, MemberBankAmount, EmiPlan, SipPlan, DebtRecord, FAMILY_MEMBERS, ADMIN_MEMBER, MemberCustomConfig } from '../types';
 import {
-  exportExpensesToCSV,
-  exportBankBalancesToCSV,
-  exportBackupJSON,
+  exportBackupCSV,
   exportBackupPDF,
-  exportExpensesToPDF,
-  exportMemberDataToCSV,
-  exportMemberDataToJSON,
-  exportMemberDataToPDF,
-  parseExpensesCSV,
   parseBackupJSON,
   parseBackupPDF,
-  parseExpensesPDF
+  parseExpensesCSV,
+  FullBackupData
 } from '../utils/exportImport';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import { Language, t } from '../utils/translations';
-import { MemberAvatar } from './MemberAvatar';
 
 interface ExportImportModalProps {
   isOpen: boolean;
@@ -64,9 +55,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   expenses,
   selectedMonth,
   monthlyBudget,
-  memberTotals,
-  allTimeMemberTotals,
-  memberBankAmounts,
+  memberBankAmounts = {},
   emis = [],
   sips = [],
   debts = [],
@@ -82,273 +71,185 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   const isDark = theme === 'dark';
   const isAdmin = activeMember === ADMIN_MEMBER;
 
+  // Single Modal Mode: Export, Import, or Restart
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'reset'>('export');
 
-  // Export Filter State
-  const [exportMonthRange, setExportMonthRange] = useState<'current' | 'all'>('current');
-
-  // CSV Import State
-  const [csvPreviewData, setCsvPreviewData] = useState<Omit<Expense, 'id'>[] | null>(null);
-  const [csvErrors, setCsvErrors] = useState<string[]>([]);
-  const [csvFileName, setCsvFileName] = useState<string>('');
+  // Unified Import State
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFileType, setImportFileType] = useState<'csv' | 'pdf' | 'json' | null>(null);
+  const [parsedBackupData, setParsedBackupData] = useState<FullBackupData | null>(null);
+  const [parsedExpensesCount, setParsedExpensesCount] = useState<number>(0);
+  const [isReadingFile, setIsReadingFile] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
   const [importErrorMsg, setImportErrorMsg] = useState<string | null>(null);
 
-  // JSON Import State
-  const [jsonBackupData, setJsonBackupData] = useState<any | null>(null);
-  const [jsonFileName, setJsonFileName] = useState<string>('');
-
-  // PDF Import State
-  const [pdfPreviewData, setPdfPreviewData] = useState<Omit<Expense, 'id'>[] | null>(null);
-  const [pdfErrors, setPdfErrors] = useState<string[]>([]);
-  const [pdfFileName, setPdfFileName] = useState<string>('');
-
-  // Reset Tab PIN Code State
+  // Restart / Reset App State
   const [resetPin, setResetPin] = useState<string>('');
+  const [resetConfirmed, setResetConfirmed] = useState<boolean>(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
-  const csvFileInputRef = useRef<HTMLInputElement>(null);
-  const jsonFileInputRef = useRef<HTMLInputElement>(null);
-  const pdfFileInputRef = useRef<HTMLInputElement>(null);
-  const pdfBackupFileInputRef = useRef<HTMLInputElement>(null);
-
-  // Automated Weekly PDF Backup State
-  const [autoWeeklyBackupEnabled, setAutoWeeklyBackupEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('auto_weekly_pdf_backup_enabled') !== 'false';
-  });
-
-  const [autoWeeklyLastTime, setAutoWeeklyLastTime] = useState<number | null>(() => {
-    const saved = localStorage.getItem('auto_weekly_pdf_backup_last_time');
-    return saved ? Number(saved) : null;
-  });
-
-  React.useEffect(() => {
-    if (isOpen) {
-      const originalStyle = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalStyle;
-      };
-    }
-  }, [isOpen]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  // Expenses filtered for current selection
-  const currentMonthExpenses = expenses.filter(
-    e => e.month === selectedMonth || (e.date && e.date.startsWith(selectedMonth))
-  );
+  // Helper to construct full app backup payload for export
+  const buildFullBackupPayload = (): FullBackupData => {
+    return {
+      expenses,
+      memberBankAmounts,
+      emis,
+      sips,
+      debts,
+      monthlyBudget,
+      adminPin,
+      familyMembers,
+      memberConfigs
+    };
+  };
 
-  const expensesToExport = exportMonthRange === 'current' ? currentMonthExpenses : expenses;
-
-  // Handle Export Actions
+  // 1. Export Entire App Data in CSV Format
   const handleExportCSV = () => {
-    exportExpensesToCSV(
-      expensesToExport,
-      exportMonthRange === 'current' ? selectedMonth : 'all_time'
-    );
+    const payload = buildFullBackupPayload();
+    exportBackupCSV(payload);
   };
 
+  // 2. Export Entire App Data in PDF Format
   const handleExportPDF = () => {
-    exportExpensesToPDF({
-      expenses: currentMonthExpenses,
-      selectedMonth,
-      monthlyBudget,
-      memberTotals,
-      allTimeMemberTotals,
-      memberBankAmounts,
-      language
-    });
+    const payload = buildFullBackupPayload();
+    exportBackupPDF(payload);
   };
 
-  const handleExportBankCSV = () => {
-    if (memberBankAmounts) {
-      exportBankBalancesToCSV(memberBankAmounts);
-    }
-  };
-
-  const handleExportJSON = () => {
-    exportBackupJSON({
-      expenses,
-      memberBankAmounts,
-      emis,
-      sips,
-      debts,
-      monthlyBudget,
-      adminPin,
-      familyMembers,
-      memberConfigs
-    });
-  };
-
-  const handleToggleAutoWeeklyBackup = () => {
-    const nextState = !autoWeeklyBackupEnabled;
-    setAutoWeeklyBackupEnabled(nextState);
-    localStorage.setItem('auto_weekly_pdf_backup_enabled', String(nextState));
-  };
-
-  const handleTriggerWeeklyBackupNow = () => {
-    exportBackupPDF({
-      expenses,
-      memberBankAmounts,
-      emis,
-      sips,
-      debts,
-      monthlyBudget,
-      adminPin,
-      familyMembers,
-      memberConfigs
-    });
-    const now = Date.now();
-    setAutoWeeklyLastTime(now);
-    localStorage.setItem('auto_weekly_pdf_backup_last_time', String(now));
-  };
-
-  const handleExportPDFBackup = () => {
-    exportBackupPDF({
-      expenses,
-      memberBankAmounts,
-      emis,
-      sips,
-      debts,
-      monthlyBudget,
-      adminPin,
-      familyMembers,
-      memberConfigs
-    });
-  };
-
-  // Handle CSV File Selection
-  const handleCSVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setCsvFileName(file.name);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (text) {
-        const { validExpenses, errors } = parseExpensesCSV(text);
-        setCsvPreviewData(validExpenses);
-        setCsvErrors(errors);
-      }
-    };
-    reader.onerror = () => {
-      setImportErrorMsg('Failed to read CSV file.');
-    };
-    reader.readAsText(file);
-  };
-
-  // Confirm CSV Import into Firestore
-  const handleConfirmCSVImport = async () => {
-    if (!csvPreviewData || csvPreviewData.length === 0) return;
-
-    setIsImporting(true);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-
-    try {
-      const expensesRef = collection(db, 'expenses');
-      let count = 0;
-
-      for (const item of csvPreviewData) {
-        await addDoc(expensesRef, {
-          ...item,
-          createdAt: new Date().toISOString()
-        });
-        count++;
-      }
-
-      setImportSuccessMsg(`Successfully imported ${count} expense records into Firestore database!`);
-      setCsvPreviewData(null);
-      setCsvErrors([]);
-      setCsvFileName('');
-      if (csvFileInputRef.current) csvFileInputRef.current.value = '';
-      if (onRefreshData) onRefreshData();
-    } catch (err: any) {
-      console.error('Error importing CSV to Firestore:', err);
-      setImportErrorMsg(`Failed to save records to Firestore: ${err?.message || 'Permission denied'}`);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  // Handle JSON Backup File Selection
-  const handleJSONFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setJsonFileName(file.name);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (text) {
-        const result = parseBackupJSON(text);
-        if (result.success && result.data) {
-          setJsonBackupData(result.data);
-        } else {
-          setImportErrorMsg(result.error || 'Invalid JSON file.');
-          setJsonBackupData(null);
-        }
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // Handle PDF Backup File Selection
-  const handlePDFBackupFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setJsonFileName(file.name);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-    setIsImporting(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const buffer = event.target?.result as ArrayBuffer;
-      if (buffer) {
-        try {
-          const result = await parseBackupPDF(buffer);
-          if (result.success && result.data) {
-            setJsonBackupData(result.data);
-          } else {
-            setImportErrorMsg(result.error || 'Invalid backup PDF file.');
-            setJsonBackupData(null);
-          }
-        } catch (err: any) {
-          setImportErrorMsg(`Failed to parse backup PDF: ${err?.message || 'Unknown error'}`);
-          setJsonBackupData(null);
-        } finally {
-          setIsImporting(false);
-        }
-      }
-    };
-    reader.onerror = () => {
-      setImportErrorMsg('Failed to read PDF backup file.');
-      setIsImporting(false);
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Helper to remove undefined properties before saving to Firestore
+  // Helper to sanitize Firestore document objects before write
   const sanitizeForFirestore = (obj: any): any => {
-    if (obj === null || obj === undefined) return {};
-    return JSON.parse(JSON.stringify(obj));
+    if (obj === null || obj === undefined) return null;
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(sanitizeForFirestore);
+    }
+    const clean: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        clean[key] = sanitizeForFirestore(val);
+      }
+    }
+    return clean;
   };
 
-  // Confirm JSON Restore into Firestore
-  const handleConfirmJSONRestore = async () => {
-    if (!jsonBackupData) return;
+  // File Select Handler for Unified Import (CSV or PDF)
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportFile(file);
+    setImportSuccessMsg(null);
+    setImportErrorMsg(null);
+    setParsedBackupData(null);
+    setParsedExpensesCount(0);
+    setIsReadingFile(true);
+
+    const fileNameLower = file.name.toLowerCase();
+
+    if (fileNameLower.endsWith('.pdf')) {
+      setImportFileType('pdf');
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const buffer = event.target?.result as ArrayBuffer;
+        if (buffer) {
+          try {
+            const result = await parseBackupPDF(buffer);
+            if (result.success && result.data) {
+              setParsedBackupData(result.data);
+              setParsedExpensesCount((result.data.expenses || []).length);
+            } else {
+              setImportErrorMsg(result.error || 'Failed to parse PDF backup file.');
+            }
+          } catch (err: any) {
+            setImportErrorMsg(`Error reading PDF backup: ${err?.message || 'Invalid format'}`);
+          } finally {
+            setIsReadingFile(false);
+          }
+        }
+      };
+      reader.onerror = () => {
+        setImportErrorMsg('Failed to read PDF file.');
+        setIsReadingFile(false);
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (fileNameLower.endsWith('.csv')) {
+      setImportFileType('csv');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (text) {
+          try {
+            const { validExpenses, errors } = parseExpensesCSV(text);
+            if (validExpenses.length > 0) {
+              setParsedBackupData({
+                expenses: validExpenses as Expense[],
+                monthlyBudget,
+                adminPin,
+                familyMembers
+              });
+              setParsedExpensesCount(validExpenses.length);
+              if (errors.length > 0) {
+                console.warn('[CSV Parse Warnings]:', errors);
+              }
+            } else {
+              setImportErrorMsg(errors.length > 0 ? errors.join(', ') : 'No valid expenses found in CSV.');
+            }
+          } catch (err: any) {
+            setImportErrorMsg(`Error parsing CSV: ${err?.message || 'Invalid CSV format'}`);
+          } finally {
+            setIsReadingFile(false);
+          }
+        }
+      };
+      reader.onerror = () => {
+        setImportErrorMsg('Failed to read CSV file.');
+        setIsReadingFile(false);
+      };
+      reader.readAsText(file);
+    } else if (fileNameLower.endsWith('.json')) {
+      setImportFileType('json');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (text) {
+          try {
+            const result = parseBackupJSON(text);
+            if (result.success && result.data) {
+              setParsedBackupData(result.data);
+              setParsedExpensesCount((result.data.expenses || []).length);
+            } else {
+              setImportErrorMsg(result.error || 'Invalid JSON backup file.');
+            }
+          } catch (err: any) {
+            setImportErrorMsg(`Error parsing JSON: ${err?.message || 'Syntax error'}`);
+          } finally {
+            setIsReadingFile(false);
+          }
+        }
+      };
+      reader.onerror = () => {
+        setImportErrorMsg('Failed to read JSON file.');
+        setIsReadingFile(false);
+      };
+      reader.readAsText(file);
+    } else {
+      setImportErrorMsg('Unsupported file format. Please select a CSV or PDF full backup file.');
+      setIsReadingFile(false);
+    }
+  };
+
+  // Confirm Full App Restore into Firestore
+  const handleConfirmImport = async () => {
+    if (!parsedBackupData) {
+      setImportErrorMsg('No backup data available to restore. Please upload a CSV or PDF backup file.');
+      return;
+    }
 
     setIsImporting(true);
     setImportSuccessMsg(null);
@@ -361,8 +262,9 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       let debtCount = 0;
 
       // 1. Restore Expenses
-      if (Array.isArray(jsonBackupData.expenses) && jsonBackupData.expenses.length > 0) {
-        for (const exp of jsonBackupData.expenses) {
+      if (Array.isArray(parsedBackupData.expenses) && parsedBackupData.expenses.length > 0) {
+        for (let i = 0; i < parsedBackupData.expenses.length; i++) {
+          const exp = parsedBackupData.expenses[i];
           const expId = exp.id || `restored_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
           const docRef = doc(db, 'expenses', expId);
           const dataToSave = sanitizeForFirestore({
@@ -379,9 +281,9 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         }
       }
 
-      // 2. Restore Member Bank Amounts if present
-      if (jsonBackupData.memberBankAmounts && typeof jsonBackupData.memberBankAmounts === 'object') {
-        for (const [mKey, bankVal] of Object.entries(jsonBackupData.memberBankAmounts)) {
+      // 2. Restore Member Bank Balances if present
+      if (parsedBackupData.memberBankAmounts && typeof parsedBackupData.memberBankAmounts === 'object') {
+        for (const [mKey, bankVal] of Object.entries(parsedBackupData.memberBankAmounts)) {
           if (mKey && bankVal) {
             const docRef = doc(db, 'memberBankAmounts', mKey);
             try {
@@ -394,8 +296,8 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       }
 
       // 3. Restore EMI Plans
-      if (Array.isArray(jsonBackupData.emis) && jsonBackupData.emis.length > 0) {
-        for (const emi of jsonBackupData.emis) {
+      if (Array.isArray(parsedBackupData.emis) && parsedBackupData.emis.length > 0) {
+        for (const emi of parsedBackupData.emis) {
           const emiId = emi.id || `emi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
           const docRef = doc(db, 'emis', emiId);
           try {
@@ -408,8 +310,8 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       }
 
       // 4. Restore SIP Plans
-      if (Array.isArray(jsonBackupData.sips) && jsonBackupData.sips.length > 0) {
-        for (const sip of jsonBackupData.sips) {
+      if (Array.isArray(parsedBackupData.sips) && parsedBackupData.sips.length > 0) {
+        for (const sip of parsedBackupData.sips) {
           const sipId = sip.id || `sip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
           const docRef = doc(db, 'sips', sipId);
           try {
@@ -422,8 +324,8 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       }
 
       // 5. Restore Debt Records
-      if (Array.isArray(jsonBackupData.debts) && jsonBackupData.debts.length > 0) {
-        for (const debt of jsonBackupData.debts) {
+      if (Array.isArray(parsedBackupData.debts) && parsedBackupData.debts.length > 0) {
+        for (const debt of parsedBackupData.debts) {
           const debtId = debt.id || `debt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
           const docRef = doc(db, 'debts', debtId);
           try {
@@ -436,1013 +338,459 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       }
 
       // 6. Restore Monthly Budget
-      if (typeof jsonBackupData.monthlyBudget === 'number') {
-        localStorage.setItem('family_monthly_budget_cache', String(jsonBackupData.monthlyBudget));
+      if (typeof parsedBackupData.monthlyBudget === 'number') {
+        localStorage.setItem('family_monthly_budget_cache', String(parsedBackupData.monthlyBudget));
         const currentMonth = selectedMonth || new Date().toISOString().slice(0, 7);
         const budgetDocRef = doc(db, 'budgets', currentMonth);
         try {
-          await setDoc(budgetDocRef, { monthlyBudget: jsonBackupData.monthlyBudget }, { merge: true });
+          await setDoc(budgetDocRef, { monthlyBudget: parsedBackupData.monthlyBudget }, { merge: true });
         } catch (e) {
           console.warn('Firestore setDoc skipped for budget:', e);
         }
       }
 
-      // 7. Restore Admin Security PIN
-      if (typeof jsonBackupData.adminPin === 'string' && jsonBackupData.adminPin) {
-        localStorage.setItem('admin_pin_code', jsonBackupData.adminPin);
+      // 7. Restore Admin PIN
+      if (typeof parsedBackupData.adminPin === 'string' && parsedBackupData.adminPin) {
+        localStorage.setItem('admin_pin_code', parsedBackupData.adminPin);
         const settingsRef = doc(db, 'settings', 'adminConfig');
         try {
-          await setDoc(settingsRef, { adminPin: jsonBackupData.adminPin, updatedAt: new Date().toISOString() }, { merge: true });
+          await setDoc(settingsRef, { adminPin: parsedBackupData.adminPin, updatedAt: new Date().toISOString() }, { merge: true });
         } catch (e) {
           console.warn('Firestore setDoc skipped for adminConfig:', e);
         }
       }
 
       // 8. Restore Family Members List
-      if (Array.isArray(jsonBackupData.familyMembers) && jsonBackupData.familyMembers.length > 0) {
-        localStorage.setItem('family_members_list', JSON.stringify(jsonBackupData.familyMembers));
+      if (Array.isArray(parsedBackupData.familyMembers) && parsedBackupData.familyMembers.length > 0) {
+        localStorage.setItem('family_members_list', JSON.stringify(parsedBackupData.familyMembers));
         const membersListRef = doc(db, 'settings', 'familyMembersConfig');
         try {
-          await setDoc(membersListRef, { members: jsonBackupData.familyMembers, updatedAt: new Date().toISOString() }, { merge: true });
+          await setDoc(membersListRef, { members: parsedBackupData.familyMembers, updatedAt: new Date().toISOString() }, { merge: true });
         } catch (e) {
           console.warn('Firestore setDoc skipped for familyMembersConfig:', e);
         }
       }
 
-      // 9. Restore Custom Member Configs
-      if (jsonBackupData.memberConfigs && typeof jsonBackupData.memberConfigs === 'object') {
-        localStorage.setItem('family_member_configs', JSON.stringify(jsonBackupData.memberConfigs));
-        for (const [mName, configObj] of Object.entries(jsonBackupData.memberConfigs)) {
-          if (mName && configObj) {
-            const docRef = doc(db, 'memberConfigs', mName);
-            try {
-              await setDoc(docRef, sanitizeForFirestore(configObj), { merge: true });
-            } catch (e) {
-              console.warn(`Firestore setDoc skipped for memberConfig ${mName}:`, e);
-            }
-          }
-        }
-      }
-
-      setImportSuccessMsg(`Full application backup restored completely! (${expenseCount} expenses, ${emiCount} EMIs, ${sipCount} SIPs, ${debtCount} debts, member configs & settings restored)`);
-      setJsonBackupData(null);
-      setJsonFileName('');
-      if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
+      setImportSuccessMsg(`Entire app data restored successfully! (${expenseCount} expenses, ${emiCount} EMIs, ${sipCount} SIPs, ${debtCount} debts restored)`);
+      setImportFile(null);
+      setParsedBackupData(null);
+      setParsedExpensesCount(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       if (onRefreshData) onRefreshData();
     } catch (err: any) {
-      console.error('Error restoring JSON backup:', err);
+      console.error('Error during full app restore:', err);
+      handleFirestoreError(err, OperationType.WRITE, 'backup');
       setImportErrorMsg(`Failed to restore backup: ${err?.message || 'Permission denied'}`);
     } finally {
       setIsImporting(false);
     }
   };
 
-  // Handle PDF Statement Selection
-  const handlePDFFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Restart / Reset Entire App Handler
+  const handleConfirmResetApp = async () => {
+    setPinError(null);
 
-    setPdfFileName(file.name);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-    setIsImporting(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const buffer = event.target?.result as ArrayBuffer;
-      if (buffer) {
-        try {
-          const { validExpenses, errors } = await parseExpensesPDF(buffer);
-          setPdfPreviewData(validExpenses);
-          setPdfErrors(errors);
-        } catch (err: any) {
-          setImportErrorMsg(`Failed to parse PDF file: ${err?.message || 'Unknown error'}`);
-          setPdfPreviewData(null);
-        } finally {
-          setIsImporting(false);
-        }
+    // If Admin PIN is set, verify PIN code
+    if (adminPin) {
+      if (resetPin.trim() !== adminPin.trim()) {
+        setPinError('Incorrect Admin Security PIN code.');
+        return;
       }
-    };
-    reader.onerror = () => {
-      setImportErrorMsg('Failed to read PDF file.');
-      setIsImporting(false);
-    };
-    reader.readAsArrayBuffer(file);
-  };
+    } else {
+      if (!resetConfirmed) {
+        setPinError('Please check the confirmation box to proceed with app restart.');
+        return;
+      }
+    }
 
-  // Confirm PDF Expenses Import into Firestore
-  const handleConfirmPDFImport = async () => {
-    if (!pdfPreviewData || pdfPreviewData.length === 0) return;
-
-    setIsImporting(true);
-    setImportSuccessMsg(null);
-    setImportErrorMsg(null);
-
+    setIsResetting(true);
     try {
-      const expensesRef = collection(db, 'expenses');
-      let count = 0;
-
-      for (const item of pdfPreviewData) {
-        await addDoc(expensesRef, {
-          ...item,
-          createdAt: new Date().toISOString()
-        });
-        count++;
+      if (onResetApp) {
+        await onResetApp();
       }
-
-      setImportSuccessMsg(`Successfully imported ${count} expense records from PDF statement into Firestore!`);
-      setPdfPreviewData(null);
-      setPdfErrors([]);
-      setPdfFileName('');
-      if (pdfFileInputRef.current) pdfFileInputRef.current.value = '';
+      setResetSuccessMsg('Application restarted successfully! All database collections and settings have been reset.');
+      setResetPin('');
+      setResetConfirmed(false);
       if (onRefreshData) onRefreshData();
     } catch (err: any) {
-      console.error('Error importing PDF expenses to Firestore:', err);
-      setImportErrorMsg(`Failed to save PDF records to Firestore: ${err?.message || 'Permission denied'}`);
+      console.error('Error restarting application:', err);
+      setPinError(`Failed to restart app: ${err?.message || 'Database error'}`);
     } finally {
-      setIsImporting(false);
+      setIsResetting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className={`w-full max-w-3xl rounded-3xl p-5 sm:p-6 shadow-2xl border my-auto transition-all ${
-        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-900'
-      }`}>
-
-        {/* Modal Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div
+        className={`relative w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl border ${
+          isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+        }`}
+      >
+        {/* Header */}
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-100 bg-slate-50'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-xs">
+            <div className={`p-2.5 rounded-xl ${isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-black text-lg sm:text-xl tracking-tight">Export & Import Family Data</h2>
-              <p className="text-xs text-slate-400 font-medium">
-                Download PDF/CSV reports or import CSV/JSON files directly into Firestore
+              <h2 className="text-lg font-bold">App Data Import, Export & Restart</h2>
+              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                One unified control to backup, restore, or restart your entire application
               </p>
             </div>
           </div>
           <button
-            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-slate-200' : 'hover:bg-slate-200 text-slate-500 hover:text-slate-700'}`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Selector Buttons */}
-        <div className="flex items-center gap-2 mt-4 p-1 bg-slate-100 dark:bg-slate-800/60 rounded-2xl">
+        {/* 3 Unified Option Navigation Tabs */}
+        <div className={`flex border-b ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'}`}>
           <button
-            type="button"
-            onClick={() => setActiveTab('export')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+            onClick={() => {
+              setActiveTab('export');
+              setImportSuccessMsg(null);
+              setImportErrorMsg(null);
+            }}
+            className={`flex-1 py-3 px-4 text-xs font-semibold flex items-center justify-center gap-2 border-b-2 transition-all ${
               activeTab === 'export'
-                ? isDark
-                  ? 'bg-slate-700 text-white shadow-md'
-                  : 'bg-white text-indigo-700 shadow-md'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-600 font-bold bg-indigo-50/10'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
             }`}
           >
-            <Download className="w-4 h-4 text-emerald-500" />
-            <span>Export Reports (PDF / CSV)</span>
+            <Download className="w-4 h-4" />
+            1. Export Entire App
           </button>
-
           <button
-            type="button"
-            onClick={() => setActiveTab('import')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+            onClick={() => {
+              setActiveTab('import');
+              setImportSuccessMsg(null);
+              setImportErrorMsg(null);
+            }}
+            className={`flex-1 py-3 px-4 text-xs font-semibold flex items-center justify-center gap-2 border-b-2 transition-all ${
               activeTab === 'import'
-                ? isDark
-                  ? 'bg-slate-700 text-white shadow-md'
-                  : 'bg-white text-indigo-700 shadow-md'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-600 font-bold bg-indigo-50/10'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
             }`}
           >
-            <Upload className="w-4 h-4 text-indigo-500" />
-            <span>Import Data</span>
+            <Upload className="w-4 h-4" />
+            2. Import Entire App
           </button>
-
           <button
-            type="button"
-            onClick={() => setActiveTab('reset')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+            onClick={() => {
+              setActiveTab('reset');
+              setPinError(null);
+              setResetSuccessMsg(null);
+            }}
+            className={`flex-1 py-3 px-4 text-xs font-semibold flex items-center justify-center gap-2 border-b-2 transition-all ${
               activeTab === 'reset'
-                ? isDark
-                  ? 'bg-rose-900 text-rose-100 shadow-md'
-                  : 'bg-rose-600 text-white shadow-md'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-rose-600 text-rose-600 font-bold bg-rose-50/10'
+                : 'border-transparent text-slate-500 hover:text-rose-500'
             }`}
           >
-            <RotateCcw className="w-4 h-4 text-rose-500 dark:text-rose-400" />
-            <span>Reset App</span>
+            <RotateCcw className="w-4 h-4" />
+            3. Restart Application
           </button>
         </div>
 
-        {/* Notification Banners */}
-        {importSuccessMsg && (
-          <div className="mt-4 p-3.5 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 rounded-2xl flex items-center gap-2.5 text-xs font-bold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>{importSuccessMsg}</span>
-          </div>
-        )}
+        {/* Modal Body */}
+        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {/* TAB 1: UNIFIED EXPORT OPTION */}
+          {activeTab === 'export' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
+                <h3 className="text-sm font-bold flex items-center gap-2 text-indigo-600 dark:text-indigo-400 mb-2">
+                  <Layers className="w-4 h-4" /> Full App Backup Payload Summary
+                </h3>
+                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-4`}>
+                  Exporting will package all data across your entire application into a single portable backup file.
+                </p>
 
-        {importErrorMsg && (
-          <div className="mt-4 p-3.5 bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200 rounded-2xl flex items-center gap-2.5 text-xs font-bold">
-            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-            <span>{importErrorMsg}</span>
-          </div>
-        )}
-
-        {/* TAB 1: EXPORT DATA */}
-        {activeTab === 'export' && (
-          <div className="space-y-5 mt-5">
-            
-            {/* Range Selector */}
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-50/80 border-slate-200/80'}`}>
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <span className="text-xs font-black uppercase text-slate-400 tracking-wider">
-                  Select Data Range to Export:
-                </span>
-                <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900">
-                  {exportMonthRange === 'current' ? `Month: ${selectedMonth} (${currentMonthExpenses.length} entries)` : `All-Time (${expenses.length} entries)`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setExportMonthRange('current')}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-black cursor-pointer transition-all ${
-                    exportMonthRange === 'current'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Selected Month ({selectedMonth})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setExportMonthRange('all')}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-black cursor-pointer transition-all ${
-                    exportMonthRange === 'all'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <Layers className="w-4 h-4" />
-                  <span>All-Time Expenses ({expenses.length})</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Export Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              
-              {/* PDF Financial Report Export */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 ${
-                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/80 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="block text-lg font-bold text-indigo-600 dark:text-indigo-400">{expenses.length}</span>
+                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Expenses</span>
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm">Monthly PDF Summary Report</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Formatted statement with overview cards, family breakdown, and transactions table
-                    </p>
+                  <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="block text-lg font-bold text-emerald-600 dark:text-emerald-400">{Object.keys(memberBankAmounts).length}</span>
+                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Bank Dues</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="block text-lg font-bold text-amber-600 dark:text-amber-400">{emis.length + sips.length}</span>
+                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>EMIs & SIPs</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="block text-lg font-bold text-cyan-600 dark:text-cyan-400">{debts.length}</span>
+                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Debt Records</span>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleExportPDF}
-                  className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-red-600/20 active:scale-95 cursor-pointer transition-all"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download PDF Report ({selectedMonth})</span>
-                </button>
               </div>
 
-              {/* CSV Expenses Export */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 ${
-                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm">Expenses CSV Spreadsheet</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Spreadsheet file compatible with Excel, Google Sheets, or Apple Numbers
-                    </p>
-                  </div>
-                </div>
+              <div>
+                <label className={`block text-xs font-semibold mb-3 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  Select Export Backup Format (CSV or PDF):
+                </label>
 
-                <button
-                  type="button"
-                  onClick={handleExportCSV}
-                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer transition-all"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Expenses CSV ({expensesToExport.length} entries)</span>
-                </button>
-              </div>
-
-              {/* Bank Balances CSV Export */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 ${
-                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                    <Database className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm">Bank Dues & Balances (CSV)</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Member pending bank dues, UPI IDs, notes, and custom override numbers
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleExportBankCSV}
-                  disabled={!memberBankAmounts}
-                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer transition-all"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Bank Balances CSV</span>
-                </button>
-              </div>
-
-              {/* Full Application Backup Export (JSON + PDF) */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 ${
-                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <FileJson className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm">Full Application Backup (PDF & JSON)</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Complete snapshot containing all expenses, budget limits, EMIs & bank states
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Export Option 1: CSV Format */}
                   <button
-                    type="button"
-                    onClick={handleExportJSON}
-                    className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 cursor-pointer transition-all"
-                    title="Download raw JSON backup file"
+                    onClick={handleExportCSV}
+                    className={`p-5 rounded-2xl border text-left flex flex-col justify-between transition-all hover:scale-[1.01] ${
+                      isDark
+                        ? 'bg-slate-800/80 border-slate-700 hover:border-emerald-500 hover:bg-slate-800'
+                        : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-md'
+                    }`}
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>JSON Backup</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportPDFBackup}
-                    className="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 active:scale-95 cursor-pointer transition-all"
-                    title="Download complete PDF backup document with restore data"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>PDF Backup</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Automated Weekly PDF Backup Schedule Settings Card */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 md:col-span-2 ${
-                isDark ? 'bg-rose-950/30 border-rose-900/60' : 'bg-rose-50/80 border-rose-200'
-              }`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/20">
-                      <Calendar className="w-5 h-5" />
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        <FileSpreadsheet className="w-6 h-6" />
+                      </div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        CSV Format
+                      </span>
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-extrabold text-sm text-slate-900 dark:text-rose-100">
-                          Automated Weekly PDF Backup (Every 7 Days)
-                        </h3>
-                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-full uppercase tracking-wider ${
-                          autoWeeklyBackupEnabled
-                            ? 'bg-emerald-500 text-white dark:bg-emerald-600'
-                            : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                        }`}>
-                          {autoWeeklyBackupEnabled ? 'Active (7 Days)' : 'Disabled'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                        Automatically exports and downloads a complete PDF snapshot document containing all expenses, bank dues, and EMI plans every 7 days when you open the app.
+                      <h4 className="font-bold text-sm mb-1">Export Full App Data (CSV)</h4>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Spreadsheet CSV file containing all expenses, bank accounts, EMIs, SIPs, and debt registers.
                       </p>
                     </div>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
-                    <input
-                      type="checkbox"
-                      checked={autoWeeklyBackupEnabled}
-                      onChange={handleToggleAutoWeeklyBackup}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-rose-600"></div>
-                  </label>
-                </div>
-
-                <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/40 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-4 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold">Last Auto Backup</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {autoWeeklyLastTime
-                          ? new Date(autoWeeklyLastTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : 'Not run yet'}
-                      </span>
+                    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      <Download className="w-4 h-4" /> Download CSV Backup
                     </div>
+                  </button>
 
-                    <div className="h-6 w-px bg-rose-200 dark:bg-rose-900/60"></div>
-
-                    <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold">Next Scheduled</span>
-                      <span className="font-bold text-rose-600 dark:text-rose-400">
-                        {autoWeeklyBackupEnabled
-                          ? (autoWeeklyLastTime
-                              ? new Date(autoWeeklyLastTime + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                              : 'Next App Launch')
-                          : 'Disabled'}
-                      </span>
-                    </div>
-                  </div>
-
+                  {/* Export Option 2: PDF Format */}
                   <button
-                    type="button"
-                    onClick={handleTriggerWeeklyBackupNow}
-                    className="py-2 px-3.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer transition-all shrink-0"
+                    onClick={handleExportPDF}
+                    className={`p-5 rounded-2xl border text-left flex flex-col justify-between transition-all hover:scale-[1.01] ${
+                      isDark
+                        ? 'bg-slate-800/80 border-slate-700 hover:border-indigo-500 hover:bg-slate-800'
+                        : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-md'
+                    }`}
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Run Weekly PDF Backup Now</span>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                        PDF Format
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm mb-1">Export Full App Data (PDF)</h4>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Document report with financial summaries and embedded restore payload for lossless re-import.
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                      <Download className="w-4 h-4" /> Download PDF Backup
+                    </div>
                   </button>
                 </div>
               </div>
-
-              {/* Main Single-File Web App HTML Download */}
-              <div className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 md:col-span-2 ${
-                isDark ? 'bg-indigo-950/40 border-indigo-900/60' : 'bg-indigo-50/80 border-indigo-200/80'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-600/20">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-black text-sm text-indigo-950 dark:text-indigo-200">Main Single-File Web App (HTML)</h3>
-                      <span className="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
-                        Self-Contained
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                      Download a single self-contained HTML file that runs the complete React app in any web browser without needing Node.js or a server.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                  <a
-                    href="/standalone.html"
-                    download="family_expense_tracker_app.html"
-                    className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer transition-all"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download Main HTML Web App</span>
-                  </a>
-                  <a
-                    href="/standalone.html"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2.5 px-4 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all"
-                  >
-                    <span>Launch in New Tab</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
-
-              {/* Download Individual Member Data Section */}
-              <div className={`p-4 rounded-2xl border md:col-span-2 space-y-3 ${
-                isDark ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <Users className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm sm:text-base">Download Each Member's Data</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Export complete expense transactions, EMI plans, bank dues, and financial summary for each family member
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2">
-                  {familyMembers.map((member) => {
-                    const memberExpList = expenses.filter(e => e.paidBy === member);
-                    const totalSpent = memberExpList.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-                    const bankData = memberBankAmounts?.[member];
-
-                    return (
-                      <div
-                        key={member}
-                        className={`p-3 rounded-xl border flex items-center justify-between gap-2.5 ${
-                          isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/80 shadow-2xs'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <MemberAvatar
-                            member={member}
-                            memberConfigs={memberConfigs}
-                            size="sm"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-xs font-black truncate">{member}</p>
-                            <p className="text-[10px] text-slate-400 font-semibold truncate">
-                              {memberExpList.length} expenses • ₹{totalSpent.toLocaleString('en-IN')}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => exportMemberDataToPDF(member, expenses, bankData, memberConfigs[member], emis)}
-                            className="p-1.5 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-800 dark:text-rose-200 rounded-lg text-xs font-black transition-colors cursor-pointer flex items-center gap-1"
-                            title={`Download ${member}'s official PDF statement`}
-                          >
-                            <Download className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                            <span className="text-[10px] font-black">PDF</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => exportMemberDataToCSV(member, expenses, bankData, memberConfigs[member], emis)}
-                            className="p-1.5 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 rounded-lg text-xs font-black transition-colors cursor-pointer flex items-center gap-1"
-                            title={`Download ${member}'s CSV statement`}
-                          >
-                            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-[10px] font-black">CSV</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => exportMemberDataToJSON(member, expenses, bankData, memberConfigs[member], emis)}
-                            className="p-1.5 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 text-indigo-800 dark:text-indigo-200 rounded-lg text-xs font-black transition-colors cursor-pointer flex items-center gap-1"
-                            title={`Download ${member}'s JSON data`}
-                          >
-                            <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                            <span className="text-[10px] font-black">JSON</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB 2: IMPORT DATA */}
-        {activeTab === 'import' && (
-          <div className="space-y-5 mt-5">
-
-            {/* Option 1: CSV Expenses Import */}
-            <div className={`p-4 sm:p-5 rounded-2xl border ${isDark ? 'bg-slate-800/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="flex items-center gap-2.5 mb-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
-                <h3 className="font-black text-sm sm:text-base">1. Import Expenses from CSV File</h3>
+          {/* TAB 2: UNIFIED IMPORT OPTION */}
+          {activeTab === 'import' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-indigo-950/30 border-indigo-900/50' : 'bg-indigo-50/60 border-indigo-100'}`}>
+                <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-1 flex items-center gap-2">
+                  <Upload className="w-4 h-4" /> Single File Import for Entire App
+                </h3>
+                <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Upload your full app backup file (<strong>CSV</strong> or <strong>PDF</strong>) to restore your application's complete database and settings.
+                </p>
               </div>
-              <p className="text-xs text-slate-400 font-medium mb-3">
-                Upload a CSV spreadsheet with columns for <span className="font-bold text-slate-300">Date, Amount, Paid By, Category, Notes</span>.
-              </p>
 
-              <input
-                type="file"
-                ref={csvFileInputRef}
-                accept=".csv,text/csv"
-                onChange={handleCSVFileChange}
-                className="hidden"
-                id="csv-file-input"
-              />
-
-              <div className="flex items-center gap-3">
-                <label
-                  htmlFor="csv-file-input"
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-emerald-600/20 active:scale-95 shrink-0"
+              {/* Single Drag & Drop File Upload Area */}
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept=".csv,.pdf,.json"
+                  className="hidden"
+                />
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
+                    importFile
+                      ? isDark ? 'border-emerald-500 bg-emerald-950/20' : 'border-emerald-500 bg-emerald-50'
+                      : isDark ? 'border-slate-700 hover:border-indigo-500 bg-slate-800/40' : 'border-slate-300 hover:border-indigo-500 bg-slate-50'
+                  }`}
                 >
-                  <Upload className="w-4 h-4" />
-                  <span>{csvFileName ? 'Choose Different CSV' : 'Select CSV File'}</span>
-                </label>
-                {csvFileName && (
-                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                    📄 {csvFileName}
-                  </span>
-                )}
-              </div>
-
-              {/* CSV Preview Table */}
-              {csvPreviewData && (
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      Found {csvPreviewData.length} valid rows to import
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCsvPreviewData(null);
-                        setCsvFileName('');
-                      }}
-                      className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      Clear Preview
-                    </button>
+                  <div className="inline-flex p-4 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-3">
+                    {importFile ? <FileCheck className="w-8 h-8 text-emerald-500" /> : <Upload className="w-8 h-8" />}
                   </div>
 
-                  {/* Warning Messages */}
-                  {csvErrors.length > 0 && (
-                    <div className="p-2.5 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl text-[11px] space-y-1 font-medium">
-                      <span className="font-bold block">Warnings ({csvErrors.length}):</span>
-                      {csvErrors.slice(0, 3).map((err, idx) => (
-                        <div key={idx}>• {err}</div>
-                      ))}
-                      {csvErrors.length > 3 && <div>...and {csvErrors.length - 3} more.</div>}
+                  {importFile ? (
+                    <div>
+                      <p className="font-bold text-sm text-emerald-600 dark:text-emerald-400 mb-1">
+                        File Selected: {importFile.name}
+                      </p>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        ({(importFile.size / 1024).toFixed(1)} KB) • Click to change file
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-bold text-sm mb-1">Click to select CSV or PDF backup file</p>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Supports <strong>.csv</strong> or <strong>.pdf</strong> full app backups
+                      </p>
                     </div>
                   )}
+                </div>
+              </div>
 
-                  {/* Scrollable Preview Table */}
-                  <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
-                    <table className="w-full text-left border-collapse">
-                      <thead className={`sticky top-0 ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
-                        <tr>
-                          <th className="p-2 font-bold">Date</th>
-                          <th className="p-2 font-bold">Paid By</th>
-                          <th className="p-2 font-bold">Category</th>
-                          <th className="p-2 font-bold">Amount</th>
-                          <th className="p-2 font-bold">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                        {csvPreviewData.slice(0, 10).map((row, idx) => (
-                          <tr key={idx} className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}>
-                            <td className="p-2 font-mono text-[11px]">{row.date}</td>
-                            <td className="p-2 font-bold">{row.paidBy}</td>
-                            <td className="p-2 text-slate-400">{row.category}</td>
-                            <td className="p-2 font-black font-mono text-emerald-600 dark:text-emerald-400">₹{row.amount}</td>
-                            <td className="p-2 truncate max-w-[120px] text-slate-400">{row.notes || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleConfirmCSVImport}
-                    disabled={isImporting}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-98 transition-all"
-                  >
-                    {isImporting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Saving Records to Firestore...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Confirm & Import {csvPreviewData.length} Expenses to Firestore</span>
-                      </>
-                    )}
-                  </button>
+              {/* Parsed File Preview Section */}
+              {isReadingFile && (
+                <div className="flex items-center justify-center gap-2 p-4 text-xs text-indigo-600 font-medium">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Reading and parsing backup file...
                 </div>
               )}
-            </div>
 
-            {/* Option 2: Full Application Backup Restore (JSON or PDF) */}
-            <div className={`p-4 sm:p-5 rounded-2xl border ${isDark ? 'bg-slate-800/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="flex items-center gap-2.5 mb-2">
-                <FileJson className="w-5 h-5 text-amber-500" />
-                <h3 className="font-black text-sm sm:text-base">2. Restore Full App Backup (JSON or PDF)</h3>
-              </div>
-              <p className="text-xs text-slate-400 font-medium mb-3">
-                Upload a previously saved <span className="font-bold text-slate-300">backup.json</span> or <span className="font-bold text-slate-300">full_backup.pdf</span> file to restore complete application database and settings.
-              </p>
-
-              <input
-                type="file"
-                ref={jsonFileInputRef}
-                accept=".json,application/json"
-                onChange={handleJSONFileChange}
-                className="hidden"
-                id="json-file-input"
-              />
-
-              <input
-                type="file"
-                ref={pdfBackupFileInputRef}
-                accept=".pdf,application/pdf"
-                onChange={handlePDFBackupFileChange}
-                className="hidden"
-                id="pdf-backup-file-input"
-              />
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <label
-                  htmlFor="json-file-input"
-                  className="px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-amber-600/20 active:scale-95 shrink-0"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>{jsonFileName && jsonFileName.endsWith('.json') ? 'Change JSON' : 'Select Backup JSON'}</span>
-                </label>
-
-                <label
-                  htmlFor="pdf-backup-file-input"
-                  className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-rose-600/20 active:scale-95 shrink-0"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>{jsonFileName && jsonFileName.endsWith('.pdf') ? 'Change PDF' : 'Select Backup PDF'}</span>
-                </label>
-
-                {jsonFileName && (
-                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 truncate">
-                    📄 {jsonFileName}
-                  </span>
-                )}
-              </div>
-
-              {/* JSON / PDF Backup Summary */}
-              {jsonBackupData && (
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-xl text-xs space-y-1">
-                    <div className="font-black text-amber-900 dark:text-amber-200">
-                      Backup File Contents Ready to Restore:
-                    </div>
-                    <div className="text-slate-600 dark:text-slate-300 font-medium">
-                      • Expenses Count: <span className="font-bold">{jsonBackupData.expenses?.length || 0}</span>
-                    </div>
-                    {jsonBackupData.memberBankAmounts && (
-                      <div className="text-slate-600 dark:text-slate-300 font-medium">
-                        • Member Bank Dues: <span className="font-bold">{Object.keys(jsonBackupData.memberBankAmounts).length} records</span>
-                      </div>
-                    )}
-                    {jsonBackupData.emis && jsonBackupData.emis.length > 0 && (
-                      <div className="text-slate-600 dark:text-slate-300 font-medium">
-                        • Active EMI Plans: <span className="font-bold">{jsonBackupData.emis.length} plans</span>
-                      </div>
-                    )}
-                    {jsonBackupData.monthlyBudget && (
-                      <div className="text-slate-600 dark:text-slate-300 font-medium">
-                        • Monthly Budget: <span className="font-bold">₹{jsonBackupData.monthlyBudget}</span>
-                      </div>
-                    )}
+              {parsedBackupData && !isReadingFile && (
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-emerald-50/60 border-emerald-200'}`}>
+                  <div className="flex items-center gap-2 mb-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4" /> Backup File Ready for Import
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleConfirmJSONRestore}
-                    disabled={isImporting}
-                    className="w-full py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20 cursor-pointer active:scale-98 transition-all"
-                  >
-                    {isImporting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Restoring Backup to Database...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Confirm & Restore Full Backup to Database</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Option 3: PDF Statement Import */}
-            <div className={`p-4 sm:p-5 rounded-2xl border ${isDark ? 'bg-slate-800/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="flex items-center gap-2.5 mb-2">
-                <FileText className="w-5 h-5 text-rose-500" />
-                <h3 className="font-black text-sm sm:text-base">3. Import Expenses from PDF Statement</h3>
-              </div>
-              <p className="text-xs text-slate-400 font-medium mb-3">
-                Upload a PDF financial report, exported member statement, or bank PDF statement to extract and import expense transactions.
-              </p>
-
-              <input
-                type="file"
-                ref={pdfFileInputRef}
-                accept=".pdf,application/pdf"
-                onChange={handlePDFFileChange}
-                className="hidden"
-                id="pdf-file-input"
-              />
-
-              <div className="flex items-center gap-3">
-                <label
-                  htmlFor="pdf-file-input"
-                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-rose-600/20 active:scale-95 shrink-0"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>{pdfFileName ? 'Choose Different PDF' : 'Select PDF Statement'}</span>
-                </label>
-                {pdfFileName && (
-                  <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400 truncate">
-                    📄 {pdfFileName}
-                  </span>
-                )}
-              </div>
-
-              {/* PDF Preview Table */}
-              {pdfPreviewData && (
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                      Found {pdfPreviewData.length} expense transactions in PDF
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPdfPreviewData(null);
-                        setPdfFileName('');
-                      }}
-                      className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      Clear Preview
-                    </button>
-                  </div>
-
-                  {/* Warning Messages */}
-                  {pdfErrors.length > 0 && (
-                    <div className="p-2.5 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl text-[11px] space-y-1 font-medium">
-                      <span className="font-bold block">Parsing Details ({pdfErrors.length}):</span>
-                      {pdfErrors.slice(0, 3).map((err, idx) => (
-                        <div key={idx}>• {err}</div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Scrollable Preview Table */}
-                  <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
-                    <table className="w-full text-left border-collapse">
-                      <thead className={`sticky top-0 ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
-                        <tr>
-                          <th className="p-2 font-bold">Date</th>
-                          <th className="p-2 font-bold">Paid By</th>
-                          <th className="p-2 font-bold">Category</th>
-                          <th className="p-2 font-bold">Amount</th>
-                          <th className="p-2 font-bold">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                        {pdfPreviewData.slice(0, 10).map((row, idx) => (
-                          <tr key={idx} className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}>
-                            <td className="p-2 font-mono text-[11px]">{row.date}</td>
-                            <td className="p-2 font-bold">{row.paidBy}</td>
-                            <td className="p-2 text-slate-400">{row.category}</td>
-                            <td className="p-2 font-black font-mono text-rose-600 dark:text-rose-400">₹{row.amount}</td>
-                            <td className="p-2 truncate max-w-[120px] text-slate-400">{row.notes || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleConfirmPDFImport}
-                    disabled={isImporting}
-                    className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 cursor-pointer active:scale-98 transition-all"
-                  >
-                    {isImporting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Saving PDF Records to Firestore...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Confirm & Import {pdfPreviewData.length} PDF Expenses to Firestore</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {activeTab === 'reset' && (
-          <div className="space-y-5 mt-4">
-            <div className={`p-5 rounded-2xl border ${isDark ? 'bg-rose-950/30 border-rose-900/60' : 'bg-rose-50 border-rose-200'}`}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-rose-600 text-white rounded-2xl shadow-md shrink-0">
-                  <RotateCcw className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-rose-900 dark:text-rose-100">Reset Entire Application Data</h3>
-                  <p className="text-xs text-rose-700 dark:text-rose-300 font-medium">
-                    Permanently wipe all Expenses, EMI Plans, SIP Investments, Debts, Bank Balances, and custom settings across Firestore and local cache.
+                  <p className={`text-xs mb-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Parsed <strong>{parsedExpensesCount}</strong> expense records
+                    {parsedBackupData.emis ? `, ${parsedBackupData.emis.length} EMI plans` : ''}
+                    {parsedBackupData.sips ? `, ${parsedBackupData.sips.length} SIP plans` : ''}
+                    {parsedBackupData.debts ? `, ${parsedBackupData.debts.length} debt records` : ''}.
                   </p>
+
+                  <button
+                    onClick={handleConfirmImport}
+                    disabled={isImporting}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isImporting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Restoring Application Data...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" /> Restore Entire App Data Now
+                      </>
+                    )}
+                  </button>
                 </div>
+              )}
+
+              {/* Success / Error Banners */}
+              {importSuccessMsg && (
+                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  {importSuccessMsg}
+                </div>
+              )}
+
+              {importErrorMsg && (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {importErrorMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: UNIFIED RESTART APPLICATION OPTION */}
+          {activeTab === 'reset' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-rose-950/30 border-rose-900/50 text-rose-200' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-sm mb-1">
+                  <ShieldAlert className="w-5 h-5" /> Danger Zone: Restart Application & Reset Data
+                </div>
+                <p className="text-xs opacity-90">
+                  Restarting the application will permanently wipe all stored expenses, bank balances, EMI/SIP plans, debts, and custom configurations from Firestore and restart with a clean state.
+                </p>
               </div>
 
-              <div className="mt-4 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-rose-200 dark:border-rose-900/80 space-y-4 shadow-xs">
+              {adminPin ? (
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">
-                    Enter Security PIN Code (Default: 1234):
+                  <label className={`block text-xs font-bold mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Enter Admin Security PIN Code to Confirm Restart:
                   </label>
                   <input
                     type="password"
-                    maxLength={6}
+                    maxLength={8}
                     value={resetPin}
-                    onChange={(e) => {
-                      setResetPin(e.target.value);
-                      setPinError(null);
-                    }}
-                    placeholder="Enter 4-digit PIN (e.g. 1234)"
-                    className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold tracking-widest focus:outline-none transition-all ${
-                      pinError
-                        ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/60 text-rose-900 dark:text-rose-100'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-rose-500'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-rose-600'
+                    onChange={(e) => setResetPin(e.target.value)}
+                    placeholder="Enter Admin PIN"
+                    className={`w-full p-3 rounded-xl border text-sm font-bold tracking-widest text-center ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
                     }`}
                   />
-                  {pinError && (
-                    <p className="mt-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span>{pinError}</span>
-                    </p>
-                  )}
                 </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <input
+                    type="checkbox"
+                    id="confirmResetCheck"
+                    checked={resetConfirmed}
+                    onChange={(e) => setResetConfirmed(e.target.checked)}
+                    className="w-4 h-4 text-rose-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="confirmResetCheck" className="text-xs font-medium cursor-pointer">
+                    I understand that all application data will be permanently cleared and restarted.
+                  </label>
+                </div>
+              )}
 
-                <button
-                  type="button"
-                  disabled={isResetting}
-                  onClick={async () => {
-                    if (resetPin.trim() === '1234') {
-                      setIsResetting(true);
-                      if (onResetApp) {
-                        await onResetApp();
-                      }
-                      setIsResetting(false);
-                      onClose();
-                    } else {
-                      setPinError('Incorrect PIN code! The default PIN is 1234.');
-                    }
-                  }}
-                  className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 cursor-pointer active:scale-98 transition-all"
-                >
-                  {isResetting ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Wiping Application Data...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw className="w-4 h-4" />
-                      <span>Confirm & Reset Entire App Data</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {pinError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {pinError}
+                </div>
+              )}
+
+              {resetSuccessMsg && (
+                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  {resetSuccessMsg}
+                </div>
+              )}
+
+              <button
+                onClick={handleConfirmResetApp}
+                disabled={isResetting}
+                className="w-full py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Restarting Application & Resetting Data...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4" /> Restart Application & Reset Data Now
+                  </>
+                )}
+              </button>
             </div>
-          </div>
-        )}
-
-        {/* Modal Footer */}
-        <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs rounded-2xl cursor-pointer transition-colors"
-          >
-            Close Window
-          </button>
+          )}
         </div>
 
+        {/* Modal Footer */}
+        <div className={`px-6 py-4 border-t flex justify-end ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-100 bg-slate-50'}`}>
+          <button
+            onClick={onClose}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
