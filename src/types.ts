@@ -536,7 +536,9 @@ export interface DebtRecord {
   remainingAmount: number; // Current unpaid balance in ₹
   paidBy: FamilyMember; // Responsible family member
   startDate?: string; // YYYY-MM-DD
+  time?: string; // HH:mm time format when borrowed/lent
   dueDate?: string; // YYYY-MM-DD target payoff date
+  dueTime?: string; // HH:mm target payoff time
   notes?: string;
   status: 'active' | 'settled';
   createdAt?: string;
