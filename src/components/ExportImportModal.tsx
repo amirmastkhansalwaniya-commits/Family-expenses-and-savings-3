@@ -635,7 +635,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                         File Selected: {importFile.name}
                       </p>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        ({(importFile.size / 1024).toFixed(1)} KB) â€¢ Click to change file
+                        ({(importFile.size / 1024).toFixed(1)} KB) • Click to change file
                       </p>
                     </div>
                   ) : (
