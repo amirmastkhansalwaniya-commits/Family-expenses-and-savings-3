@@ -94,7 +94,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
           Month: <span className="text-white">{label}</span>
         </p>
         {payload.map((entry: any, index: number) => (
-          <div key={`tooltip-${entry.dataKey || entry.name || 'item'}-${index}`} className="flex items-center justify-between gap-4 font-mono">
+          <div key={`item-${index}`} className="flex items-center justify-between gap-4 font-mono">
             <span className="flex items-center gap-1.5 font-semibold" style={{ color: entry.color }}>
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
               {entry.name}:
@@ -1010,14 +1010,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             
             {/* Member SIP Breakdown Chips */}
             <div className="flex flex-wrap gap-2 mt-3">
-              {familyMembers.map((m, idx) => {
+              {familyMembers.map((m) => {
                 const memberSip = monthExpenses
                   .filter(exp => exp.paidBy === m && (exp.category as string) === 'SIP')
                   .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
                 
                 if (memberSip <= 0) return null;
                 return (
-                  <div key={`sip-mem-${m}-${idx}`} className="px-2.5 py-1 bg-emerald-900/60 border border-emerald-700/60 rounded-xl text-xs font-bold text-emerald-200 flex items-center gap-1.5">
+                  <div key={m} className="px-2.5 py-1 bg-emerald-900/60 border border-emerald-700/60 rounded-xl text-xs font-bold text-emerald-200 flex items-center gap-1.5">
                     <span>{m}:</span>
                     <span className="font-mono text-emerald-300 font-extrabold">{formatINR(memberSip)}</span>
                     <span className="text-[10px] text-emerald-400 font-normal">(Bank Deducted)</span>
@@ -1188,9 +1188,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-indigo-800/50">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-indigo-200">Quick Deposit:</span>
-                    {[500, 1000, 2000, 5000].map((amt, idx) => (
+                    {[500, 1000, 2000, 5000].map((amt) => (
                       <button
-                        key={`quick-amt-${amt}-${idx}`}
+                        key={amt}
                         onClick={() => handleAddSavings(amt)}
                         className="px-2.5 py-1 bg-indigo-800/60 hover:bg-emerald-500 hover:text-slate-950 text-indigo-200 font-mono font-bold text-xs rounded-lg border border-indigo-700/60 transition-colors cursor-pointer"
                       >
@@ -1328,11 +1328,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                 </>
               ) : (
-                familyMembers.map((m, idx) => {
+                familyMembers.map((m) => {
                   const theme = getMemberTheme(m, memberConfigs);
                   return (
                     <Line 
-                      key={`trend-line-${m}-${idx}`}
+                      key={m}
                       type="monotone" 
                       dataKey={m} 
                       stroke={theme.hex} 
@@ -1389,14 +1389,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {familyMembers.map((member, idx) => {
+          {familyMembers.map((member) => {
             const bankInfo = memberBankAmounts?.[member];
             const pendingAmt = bankInfo?.pendingBankAmount || 0;
             const mSpent = memberTotals[member]?.amount || 0;
 
             return (
               <div
-                key={`bank-card-${member}-${idx}`}
+                key={member}
                 className="bg-white dark:bg-slate-900 border border-emerald-100 dark:border-emerald-900/40 hover:border-emerald-300 dark:hover:border-emerald-700 rounded-2xl p-3.5 flex flex-col justify-between space-y-3 shadow-2xs hover:shadow-xs transition-all"
               >
                 <div>
@@ -1492,7 +1492,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {familyMembers.map((member, idx) => {
+          {familyMembers.map((member) => {
             const data = memberTotals[member] || { amount: 0, count: 0 };
             const percentOfTotal = totalSpent > 0 ? Math.round(((data.amount || 0) / totalSpent) * 100) : 0;
             const isActiveUser = member === activeMember;
@@ -1508,7 +1508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             return (
               <div
-                key={`member-card-${member}-${idx}`}
+                key={member}
                 className={`bg-white border rounded-2xl p-4 flex flex-col justify-between relative transition-all ${
                   isActiveUser
                     ? 'border-2 border-indigo-600 shadow-md ring-2 ring-indigo-100 scale-[1.02]'
@@ -1712,11 +1712,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className={`overflow-y-auto space-y-1.5 pr-1 transition-all ${
                   dashGroceryBoxSize === 'sm' ? 'max-h-24' : dashGroceryBoxSize === 'md' ? 'max-h-44' : 'max-h-80'
                 }`}>
-                  {groceryExps.map((gExp, index) => {
+                  {groceryExps.map((gExp) => {
                     const memTheme = MEMBER_THEMES[gExp.paidBy as FamilyMember];
                     return (
                       <div
-                        key={`grocery-${gExp.id || 'no-id'}-${index}`}
+                        key={gExp.id}
                         className="p-2.5 bg-slate-900/80 border border-emerald-900/60 rounded-xl flex items-center justify-between gap-2 text-xs hover:border-emerald-700/80 transition-all"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -1809,14 +1809,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="space-y-3.5 max-h-72 overflow-y-auto pr-1">
-            {CATEGORIES.map((cat, idx) => {
+            {CATEGORIES.map((cat) => {
               const spent = categoryTotals[cat.id] || 0;
               const catPercent = totalSpent > 0 ? Math.round((spent / totalSpent) * 100) : 0;
 
               if (spent === 0) return null;
 
               return (
-                <div key={`cat-tot-${cat.id}-${idx}`} className="space-y-1">
+                <div key={cat.id} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-800 font-extrabold flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
@@ -1885,14 +1885,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="space-y-4 pt-1">
-            {familyMembers.map((m, idx) => {
+            {familyMembers.map((m) => {
               const spent = memberTotals[m]?.amount || 0;
               const maxMemberSpent = Math.max(...familyMembers.map(mem => memberTotals[mem]?.amount || 0), 1);
               const barWidthPercent = Math.round((spent / maxMemberSpent) * 100);
               const theme = getMemberTheme(m, memberConfigs);
 
               return (
-                <div key={`member-bar-${m}-${idx}`} className="space-y-1 group">
+                <div key={m} className="space-y-1 group">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-900 font-black flex items-center gap-1.5">
                       <span>{theme.emoji}</span>
@@ -2061,14 +2061,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {familyMembers.map((member, idx) => {
+                      {familyMembers.map((member) => {
                         const paid = memberTotals[member]?.amount || 0;
                         const count = memberTotals[member]?.count || 0;
                         const pct = totalSpent > 0 ? ((paid / totalSpent) * 100).toFixed(1) : '0';
                         const theme = getMemberTheme(member, memberConfigs);
 
                         return (
-                          <tr key={`tbl-mem-${member}-${idx}`} className="hover:bg-slate-50/80">
+                          <tr key={member} className="hover:bg-slate-50/80">
                             <td className="py-2.5 px-4 font-extrabold text-slate-900 flex items-center gap-2">
                               <span>{theme.emoji}</span>
                               <span>{member}</span>
@@ -2108,10 +2108,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <tbody className="divide-y divide-slate-100">
                       {Object.entries(categoryTotals)
                         .sort((a, b) => b[1] - a[1])
-                        .map(([cat, amt], idx) => {
+                        .map(([cat, amt]) => {
                           const pct = totalSpent > 0 ? ((amt / totalSpent) * 100).toFixed(1) : '0';
                           return (
-                            <tr key={`tbl-cat-${cat}-${idx}`} className="hover:bg-slate-50/80">
+                            <tr key={cat} className="hover:bg-slate-50/80">
                               <td className="py-2.5 px-4 font-extrabold text-slate-900">
                                 {cat}
                               </td>
@@ -2155,8 +2155,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {monthExpenses.map((exp, index) => (
-                        <tr key={`tbl-exp-${exp.id || 'no-id'}-${index}`} className="hover:bg-slate-50/80">
+                      {monthExpenses.map((exp) => (
+                        <tr key={exp.id} className="hover:bg-slate-50/80">
                           <td className="py-2 px-3 font-mono text-slate-600 font-semibold whitespace-nowrap">
                             {formatDateDisplay(exp.date)}
                           </td>
@@ -2208,8 +2208,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {emis.filter(e => e.status === 'active').map((emi, index) => (
-                          <tr key={`tbl-emi-${emi.id || 'no-id'}-${index}`} className="hover:bg-slate-50/80">
+                        {emis.filter(e => e.status === 'active').map((emi) => (
+                          <tr key={emi.id} className="hover:bg-slate-50/80">
                             <td className="py-2 px-3 font-extrabold text-slate-900">
                               {emi.title}
                             </td>
@@ -2488,12 +2488,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     No expense records found for {viewingHistoryMember} yet.
                   </div>
                 ) : (
-                  monthlyRecords.map((rec, idx) => {
+                  monthlyRecords.map((rec) => {
                     const isCurrentSelected = selectedMonth === rec.monthKey;
 
                     return (
                       <div
-                        key={`hist-rec-${rec.monthKey}-${idx}`}
+                        key={rec.monthKey}
                         className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                           isCurrentSelected
                             ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 ring-1 ring-emerald-200 dark:ring-emerald-800'
@@ -2902,14 +2902,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </span>
 
                   <div className="space-y-2">
-                    {familyMembers.map((member, idx) => {
+                    {familyMembers.map((member) => {
                       const mSpent = memberTotals[member]?.amount || 0;
                       const count = memberTotals[member]?.count || 0;
                       const hasOverride = memberBankAmounts?.[member]?.customMonthSpentOverride !== undefined;
 
                       return (
                         <div
-                          key={`adj-mem-${member}-${idx}`}
+                          key={member}
                           className="p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between gap-3 hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -3007,8 +3007,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onChange={(e) => setAdjCategory(e.target.value as CategoryId)}
                       className="w-full px-3 py-2 rounded-2xl text-xs font-bold border bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {CATEGORIES.map((cat, idx) => (
-                        <option key={`opt-cat-${cat.id}-${idx}`} value={cat.id}>
+                      {CATEGORIES.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
                           {cat.label}
                         </option>
                       ))}
@@ -3024,8 +3024,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onChange={(e) => setAdjPaidBy(e.target.value as FamilyMember)}
                       className="w-full px-3 py-2 rounded-2xl text-xs font-bold border bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {familyMembers.map((m, idx) => (
-                        <option key={`opt-mem-${m}-${idx}`} value={m}>
+                      {familyMembers.map((m) => (
+                        <option key={m} value={m}>
                           {m}
                         </option>
                       ))}
@@ -3078,9 +3078,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       No expense entries recorded for {selectedMonth}.
                     </div>
                   ) : (
-                    monthExpenses.map((exp, index) => (
+                    monthExpenses.map((exp) => (
                       <div
-                        key={`quick-edit-${exp.id || 'no-id'}-${index}`}
+                        key={exp.id}
                         className="p-3 rounded-2xl border bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs"
                       >
                         <div className="min-w-0 flex-1">
@@ -3280,13 +3280,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </h4>
 
               <div className="space-y-2">
-                {familyMembers.map((member, idx) => {
+                {familyMembers.map((member) => {
                   const bankInfo = memberBankAmounts?.[member];
                   const pendingAmt = bankInfo?.pendingBankAmount || 0;
 
                   return (
                     <div
-                      key={`dash-bank-mem-${member}-${idx}`}
+                      key={member}
                       className="p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between gap-3 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">

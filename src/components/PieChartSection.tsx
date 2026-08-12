@@ -565,7 +565,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                     >
                       {currentChartData.map((entry, index) => (
                         <Cell 
-                          key={`pie-cell-${entry.name || index}-${index}`} 
+                          key={`cell-${index}`} 
                           fill={entry.color} 
                           stroke="#ffffff" 
                           strokeWidth={2}
@@ -654,7 +654,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
 
                 return (
                   <div
-                    key={`pie-legend-${item.name || idx}-${idx}`}
+                    key={idx}
                     onMouseEnter={() => setActiveIndex(idx)}
                     onMouseLeave={() => setActiveIndex(undefined)}
                     onClick={() => setSelectedSlice(item)}
@@ -725,7 +725,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                     dataKey="value"
                   >
                     {categoryData.map((e, i) => (
-                      <Cell key={`pie-cat-${e.name || i}-${i}`} fill={e.color} stroke="#fff" strokeWidth={1.5} />
+                      <Cell key={i} fill={e.color} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </Pie>
                   <Tooltip content={<CustomPieTooltip />} />
@@ -758,7 +758,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                     dataKey="value"
                   >
                     {memberData.map((e, i) => (
-                      <Cell key={`pie-mem-${e.name || i}-${i}`} fill={e.color} stroke="#fff" strokeWidth={1.5} />
+                      <Cell key={i} fill={e.color} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </Pie>
                   <Tooltip content={<CustomPieTooltip />} />
@@ -791,7 +791,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                     dataKey="value"
                   >
                     {emiData.map((e, i) => (
-                      <Cell key={`pie-emi-${e.name || i}-${i}`} fill={e.color} stroke="#fff" strokeWidth={1.5} />
+                      <Cell key={i} fill={e.color} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </Pie>
                   <Tooltip content={<CustomPieTooltip />} />
@@ -824,7 +824,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                     dataKey="value"
                   >
                     {bankData.map((e, i) => (
-                      <Cell key={`pie-bank-${e.name || i}-${i}`} fill={e.color} stroke="#fff" strokeWidth={1.5} />
+                      <Cell key={i} fill={e.color} stroke="#fff" strokeWidth={1.5} />
                     ))}
                   </Pie>
                   <Tooltip content={<CustomPieTooltip />} />
