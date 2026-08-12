@@ -1005,13 +1005,18 @@ export default function App() {
         const loadedDebts: DebtRecord[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
+          const tot = Number(data.totalAmount) || 0;
+          let rem = tot;
+          if (data.remainingAmount !== undefined && data.remainingAmount !== null && !isNaN(Number(data.remainingAmount))) {
+            rem = Number(data.remainingAmount);
+          }
           loadedDebts.push({
             id: docSnap.id,
             title: data.title || 'Untitled Debt',
             type: data.type === 'given' ? 'given' : 'borrowed',
             personName: data.personName || 'Unknown',
-            totalAmount: Number(data.totalAmount) || 0,
-            remainingAmount: Number(data.remainingAmount) !== undefined ? Number(data.remainingAmount) : (Number(data.totalAmount) || 0),
+            totalAmount: tot,
+            remainingAmount: rem,
             paidBy: data.paidBy || 'Amir Khan',
             dueDate: data.dueDate || undefined,
             notes: data.notes || '',
@@ -1021,19 +1026,19 @@ export default function App() {
           });
         });
 
-        if (loadedDebts.length === 0 && snapshot.empty) {
+        if (loadedDebts.length > 0) {
+          localStorage.setItem('has_seeded_debts_v1', 'true');
+          setDebts(loadedDebts);
+          localStorage.setItem('family_debts_cache', JSON.stringify(loadedDebts));
+        } else if (snapshot.empty) {
           const hasSeeded = localStorage.getItem('has_seeded_debts_v1');
           if (!hasSeeded) {
             localStorage.setItem('has_seeded_debts_v1', 'true');
             seedInitialSampleDebts();
-          } else {
+          } else if (!snapshot.metadata.hasPendingWrites) {
             setDebts([]);
             localStorage.setItem('family_debts_cache', JSON.stringify([]));
           }
-        } else if (loadedDebts.length > 0) {
-          localStorage.setItem('has_seeded_debts_v1', 'true');
-          setDebts(loadedDebts);
-          localStorage.setItem('family_debts_cache', JSON.stringify(loadedDebts));
         }
       },
       (err) => {
@@ -1045,17 +1050,20 @@ export default function App() {
   }, []);
 
   // Debt Handler Functions
-  const handleSaveDebt = async (debtData: Omit<DebtRecord, 'id'>, debtId?: string) => {
-    if (debtId) {
-      const oldDebt = debts.find((d) => d.id === debtId);
-      if (debtData.type === 'given') {
-        const oldLentAmount = oldDebt && oldDebt.type === 'given' ? oldDebt.totalAmount : 0;
-        const delta = debtData.totalAmount - oldLentAmount;
-        if (delta !== 0) {
-          await adjustBankForMemberSpending(debtData.paidBy, delta, false);
-        }
-      }
+  const handleSaveDebt = async (
+    debtData: Omit<DebtRecord, 'id'> & { bankImpact?: 'increase' | 'decrease' | 'none' },
+    debtId?: string
+  ) => {
+    const bankImpact = debtData.bankImpact || (debtData.type === 'given' ? 'decrease' : 'increase');
 
+    // Adjust bank amount whenever debt / lent amount is created or updated
+    if (bankImpact === 'increase' && debtData.totalAmount > 0) {
+      await adjustBankForMemberSpending(debtData.paidBy, -debtData.totalAmount, false);
+    } else if (bankImpact === 'decrease' && debtData.totalAmount > 0) {
+      await adjustBankForMemberSpending(debtData.paidBy, debtData.totalAmount, false);
+    }
+
+    if (debtId) {
       const updatedDebt: DebtRecord = { ...debtData, id: debtId };
       setDebts((prev) => {
         const next = prev.map((d) => (d.id === debtId ? updatedDebt : d));
@@ -1066,20 +1074,25 @@ export default function App() {
       try {
         const debtRef = doc(db, 'debts', debtId);
         await updateDoc(debtRef, {
-          ...debtData,
+          title: debtData.title,
+          type: debtData.type,
+          personName: debtData.personName,
+          totalAmount: debtData.totalAmount,
+          remainingAmount: debtData.remainingAmount,
+          paidBy: debtData.paidBy,
+          dueDate: debtData.dueDate || null,
+          notes: debtData.notes || '',
+          status: debtData.status,
+          addedByMember: debtData.addedByMember || debtData.paidBy,
           updatedAt: new Date().toISOString(),
         });
       } catch (err) {
         console.warn('Error updating debt in Firestore:', err);
       }
     } else {
-      // Debit member bank account whenever Lent (given) amount is added inside debt tracker
-      if (debtData.type === 'given' && debtData.totalAmount > 0) {
-        await adjustBankForMemberSpending(debtData.paidBy, debtData.totalAmount, false);
-      }
-
       const tempId = `debt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newDebt: DebtRecord = { ...debtData, id: tempId };
+
       setDebts((prev) => {
         const next = [newDebt, ...prev];
         localStorage.setItem('family_debts_cache', JSON.stringify(next));
@@ -1089,9 +1102,19 @@ export default function App() {
       try {
         const debtsRef = collection(db, 'debts');
         const docRef = await addDoc(debtsRef, {
-          ...debtData,
+          title: debtData.title,
+          type: debtData.type,
+          personName: debtData.personName,
+          totalAmount: debtData.totalAmount,
+          remainingAmount: debtData.remainingAmount,
+          paidBy: debtData.paidBy,
+          dueDate: debtData.dueDate || null,
+          notes: debtData.notes || '',
+          status: debtData.status,
+          addedByMember: debtData.addedByMember || debtData.paidBy,
           createdAt: new Date().toISOString(),
         });
+
         setDebts((prev) => {
           const next = prev.map((d) => (d.id === tempId ? { ...d, id: docRef.id } : d));
           localStorage.setItem('family_debts_cache', JSON.stringify(next));
@@ -1119,7 +1142,7 @@ export default function App() {
 
   const handleLogDebtPayment = async (debtId: string, paymentAmount: number) => {
     const debt = debts.find((d) => d.id === debtId);
-    if (!debt) return;
+    if (!debt || paymentAmount <= 0) return;
 
     const newRemaining = Math.max(0, debt.remainingAmount - paymentAmount);
     const isSettled = newRemaining <= 0;
@@ -1135,6 +1158,9 @@ export default function App() {
       localStorage.setItem('family_debts_cache', JSON.stringify(next));
       return next;
     });
+
+    // Logging repayment ALSO increases member bank balance (-spending = +bank balance)
+    await adjustBankForMemberSpending(debt.paidBy, -paymentAmount, false);
 
     try {
       const debtRef = doc(db, 'debts', debtId);

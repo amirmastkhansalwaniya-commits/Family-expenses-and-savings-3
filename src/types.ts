@@ -473,14 +473,40 @@ export const SIP_FUND_CATEGORIES = [
   'Mutual Funds (Equity)',
   'Index Funds (Nifty 50 / Sensex)',
   'Small Cap / Mid Cap Funds',
+  'Flexi Cap / Large Cap Funds',
   'ELSS Tax Saving Funds',
   'PPF / Post Office Monthly',
-  'Gold & Sovereign Gold Bond',
+  'National Pension Scheme (NPS)',
+  'Gold & Sovereign Gold Bond (SGB)',
   'Direct Equity / Stocks SIP',
-  'Debt / Liquid Funds'
+  'Debt / Liquid / Hybrid Funds',
+  'REITs & Infrastructure Bonds',
+  'Fixed Deposit (FD) / Recurring Deposit (RD)',
+  'Cryptocurrency / Web3 SIP',
+  'Other / Custom Category'
 ] as const;
 
-export type SipFundCategory = typeof SIP_FUND_CATEGORIES[number];
+export type SipFundCategory = typeof SIP_FUND_CATEGORIES[number] | (string & {});
+
+export const SIP_GOAL_OPTIONS = [
+  'Wealth Generation',
+  'Retirement Fund',
+  'Retirement Corpus',
+  'Child Higher Education',
+  'Child Marriage',
+  'Home Down Payment',
+  'Home Down Payment / Real Estate',
+  'Emergency Corpus',
+  'Tax Saving (ELSS)',
+  'Tax Saving (ELSS / 80C)',
+  'Dream Vehicle / Car Purchase',
+  'World Tour & Family Vacation',
+  'Business Expansion / Startup Capital',
+  'Medical / Health Reserve',
+  'Other / Custom Goal'
+] as const;
+
+export type SipGoalOption = typeof SIP_GOAL_OPTIONS[number] | (string & {});
 
 export interface SipPlan {
   id: string;
