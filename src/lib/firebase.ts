@@ -18,6 +18,7 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
+
 const firebaseConfig = {
   apiKey: "AIzaSyAYXQGOUgWp4kmXHNOQxutlgk9_xgaGncs",
   authDomain: "my-family-app-4a728.firebaseapp.com",
@@ -26,6 +27,7 @@ const firebaseConfig = {
   messagingSenderId: "639887651286",
   appId: "1:639887651286:web:84bc654385db566a02b477"
 };
+
 // Silence non-fatal Firestore network warnings in iframe preview & offline states
 try {
   setLogLevel('error');
@@ -66,4 +68,9 @@ export {
   deleteField,
   Timestamp,
   serverTimestamp
+};
+
+// नया जोड़ा गया फ़ंक्शन (Vercel बिल्ड एरर को ठीक करने के लिए)
+export const handleFirestoreError = (error: any) => {
+  console.error("Firestore Error: ", error);
 };
