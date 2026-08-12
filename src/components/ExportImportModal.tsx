@@ -43,7 +43,7 @@ interface ExportImportModalProps {
   activeMember: FamilyMember;
   theme: 'light' | 'dark';
   language?: Language;
-  onRefreshData?: () => void;
+  onRefreshData?: (importedData?: FullBackupData) => void;
   onResetApp?: () => Promise<void> | void;
   memberConfigs?: Record<string, MemberCustomConfig>;
   familyMembers?: string[];
@@ -371,12 +371,34 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         }
       }
 
+      // Update localStorage caches for immediate UI reactivity
+      if (Array.isArray(parsedBackupData.expenses)) {
+        localStorage.setItem('family_expenses_cache', JSON.stringify(parsedBackupData.expenses));
+      }
+      if (parsedBackupData.memberBankAmounts && typeof parsedBackupData.memberBankAmounts === 'object') {
+        localStorage.setItem('family_member_bank_amounts_cache', JSON.stringify(parsedBackupData.memberBankAmounts));
+      }
+      if (Array.isArray(parsedBackupData.emis)) {
+        localStorage.setItem('family_emis_cache', JSON.stringify(parsedBackupData.emis));
+      }
+      if (Array.isArray(parsedBackupData.sips)) {
+        localStorage.setItem('family_sips_cache', JSON.stringify(parsedBackupData.sips));
+      }
+      if (Array.isArray(parsedBackupData.debts)) {
+        localStorage.setItem('family_debts_cache', JSON.stringify(parsedBackupData.debts));
+      }
+      if (parsedBackupData.memberConfigs) {
+        localStorage.setItem('family_member_configs', JSON.stringify(parsedBackupData.memberConfigs));
+      }
+
+      const backupDataToSync = { ...parsedBackupData };
+
       setImportSuccessMsg(`Entire app data restored successfully! (${expenseCount} expenses, ${emiCount} EMIs, ${sipCount} SIPs, ${debtCount} debts restored)`);
       setImportFile(null);
       setParsedBackupData(null);
       setParsedExpensesCount(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      if (onRefreshData) onRefreshData();
+      if (onRefreshData) onRefreshData(backupDataToSync);
     } catch (err: any) {
       console.error('Error during full app restore:', err);
       handleFirestoreError(err, OperationType.WRITE, 'backup');
