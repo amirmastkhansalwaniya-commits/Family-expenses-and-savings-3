@@ -17,15 +17,33 @@ export interface ExportPDFParams {
 
 // Utility to trigger browser file download
 export const triggerDownload = (content: string | Blob, fileName: string, mimeType: string) => {
-  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  } catch (err) {
+    console.warn('Trigger download error, trying data URI fallback:', err);
+    if (typeof content === 'string') {
+      const dataUri = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
+      const a = document.createElement('a');
+      a.href = dataUri;
+      a.download = fileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  }
 };
 
 // Clean string for CSV formatting
@@ -403,25 +421,161 @@ export interface FullBackupData {
  * EXPORT FULL APPLICATION BACKUP JSON
  */
 export const exportBackupJSON = (backupData: FullBackupData) => {
-  const payload = {
-    app: 'Family Expense Tracker',
-    version: '2.0',
-    exportDate: new Date().toISOString(),
-    monthlyBudget: backupData.monthlyBudget || 50000,
-    adminPin: backupData.adminPin || '1234',
-    familyMembers: backupData.familyMembers || FAMILY_MEMBERS,
-    memberConfigs: backupData.memberConfigs || {},
-    expensesCount: (backupData.expenses || []).length,
-    expenses: backupData.expenses || [],
-    memberBankAmounts: backupData.memberBankAmounts || {},
-    emis: backupData.emis || [],
-    sips: backupData.sips || [],
-    debts: backupData.debts || []
-  };
+  try {
+    const sanitizedExpenses = (backupData.expenses || []).map(e => ({
+      id: e.id,
+      date: e.date || new Date().toISOString().split('T')[0],
+      amount: Number(e.amount) || 0,
+      paidBy: e.paidBy || 'Amir Khan',
+      category: e.category || 'Others',
+      notes: e.notes || '',
+      isEmiPayment: Boolean(e.isEmiPayment),
+      createdAt: e.createdAt || new Date().toISOString()
+    }));
 
-  const jsonStr = JSON.stringify(payload, null, 2);
-  const dateStr = new Date().toISOString().split('T')[0];
-  triggerDownload(jsonStr, `family_expense_tracker_full_backup_${dateStr}.json`, 'application/json');
+    const payload = {
+      app: 'Family Expense Tracker',
+      version: '2.0',
+      exportDate: new Date().toISOString(),
+      monthlyBudget: backupData.monthlyBudget || 50000,
+      adminPin: backupData.adminPin || '1234',
+      familyMembers: backupData.familyMembers || FAMILY_MEMBERS,
+      memberConfigs: backupData.memberConfigs || {},
+      expensesCount: sanitizedExpenses.length,
+      expenses: sanitizedExpenses,
+      memberBankAmounts: backupData.memberBankAmounts || {},
+      emis: backupData.emis || [],
+      sips: backupData.sips || [],
+      debts: backupData.debts || []
+    };
+
+    const jsonStr = JSON.stringify(payload, null, 2);
+    const dateStr = new Date().toISOString().split('T')[0];
+    triggerDownload(jsonStr, `family_expense_tracker_full_backup_${dateStr}.json`, 'application/json');
+  } catch (err: any) {
+    console.error('Failed to export backup JSON:', err);
+    alert(`Export JSON failed: ${err?.message || 'Unknown error'}`);
+  }
+};
+
+/**
+ * EXPORT FULL APPLICATION BACKUP CSV
+ */
+export const exportBackupCSV = (backupData: FullBackupData) => {
+  try {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const sections: string[] = [];
+
+    // Section 1: Application Settings & Overview
+    sections.push('--- APP FULL BACKUP METADATA ---');
+    sections.push('App,Version,Export Date,Monthly Budget,Admin PIN');
+    sections.push([
+      escapeCSVField('Family Expense Tracker'),
+      escapeCSVField('2.0'),
+      escapeCSVField(new Date().toISOString()),
+      escapeCSVField(backupData.monthlyBudget || 50000),
+      escapeCSVField(backupData.adminPin || '1234')
+    ].join(','));
+
+    sections.push(''); // Blank spacer row
+
+    // Section 2: Expenses Collection
+    sections.push('--- EXPENSES REGISTER ---');
+    sections.push('ID,Date,Amount (INR),Paid By,Category,Notes / Description,Is EMI Payment,Created At');
+    (backupData.expenses || []).forEach(exp => {
+      sections.push([
+        escapeCSVField(exp.id || ''),
+        escapeCSVField(exp.date || ''),
+        escapeCSVField(exp.amount || 0),
+        escapeCSVField(exp.paidBy || 'Amir Khan'),
+        escapeCSVField(exp.category || 'Others'),
+        escapeCSVField(exp.notes || ''),
+        escapeCSVField(exp.isEmiPayment ? 'Yes' : 'No'),
+        escapeCSVField(exp.createdAt || '')
+      ].join(','));
+    });
+
+    sections.push('');
+
+    // Section 3: Member Bank Accounts & Dues
+    sections.push('--- MEMBER BANK BALANCES ---');
+    sections.push('Member,Pending Bank Amount (INR),Bank Name,UPI ID,Status,Last Updated,Notes');
+    if (backupData.memberBankAmounts) {
+      Object.entries(backupData.memberBankAmounts).forEach(([m, b]) => {
+        sections.push([
+          escapeCSVField(m),
+          escapeCSVField(b.pendingBankAmount || 0),
+          escapeCSVField(b.bankName || ''),
+          escapeCSVField(b.upiId || ''),
+          escapeCSVField(b.status || 'pending'),
+          escapeCSVField(b.lastUpdated || ''),
+          escapeCSVField(b.notes || '')
+        ].join(','));
+      });
+    }
+
+    sections.push('');
+
+    // Section 4: EMI Plans
+    sections.push('--- EMI PLANS ---');
+    sections.push('ID,Title,Paid By,Category,Total Amount,Monthly EMI,Tenure Months,Paid Months,Status,Start Month');
+    (backupData.emis || []).forEach(e => {
+      sections.push([
+        escapeCSVField(e.id || ''),
+        escapeCSVField(e.title || ''),
+        escapeCSVField(e.paidBy || ''),
+        escapeCSVField(e.category || ''),
+        escapeCSVField(e.totalAmount || 0),
+        escapeCSVField(e.emiAmount || 0),
+        escapeCSVField(e.tenureMonths || 0),
+        escapeCSVField(e.paidMonths || 0),
+        escapeCSVField(e.status || ''),
+        escapeCSVField(e.startMonth || '')
+      ].join(','));
+    });
+
+    sections.push('');
+
+    // Section 5: SIP Plans
+    sections.push('--- SIP PLANS ---');
+    sections.push('ID,Title,Paid By,Monthly Amount,Fund Category,Completed Months,Status,Start Date');
+    (backupData.sips || []).forEach(s => {
+      sections.push([
+        escapeCSVField(s.id || ''),
+        escapeCSVField(s.title || ''),
+        escapeCSVField(s.paidBy || ''),
+        escapeCSVField(s.monthlyAmount || 0),
+        escapeCSVField(s.fundCategory || ''),
+        escapeCSVField(s.completedMonths || 0),
+        escapeCSVField(s.status || ''),
+        escapeCSVField((s as any).startDate || s.startMonth || '')
+      ].join(','));
+    });
+
+    sections.push('');
+
+    // Section 6: Debt Records
+    sections.push('--- DEBT RECORDS ---');
+    sections.push('ID,Title,Person Name,Type,Total Amount,Remaining Amount,Status,Date');
+    (backupData.debts || []).forEach(d => {
+      sections.push([
+        escapeCSVField(d.id || ''),
+        escapeCSVField(d.title || ''),
+        escapeCSVField(d.personName || ''),
+        escapeCSVField(d.type || 'borrowed'),
+        escapeCSVField(d.totalAmount || 0),
+        escapeCSVField(d.remainingAmount || 0),
+        escapeCSVField(d.status || ''),
+        escapeCSVField(d.startDate || '')
+      ].join(','));
+    });
+
+    const csvContent = sections.join('\n');
+    triggerDownload(csvContent, `family_expense_tracker_full_backup_${dateStr}.csv`, 'text/csv;charset=utf-8;');
+  } catch (err: any) {
+    console.error('Failed to export backup CSV:', err);
+    alert(`Export CSV failed: ${err?.message || 'Unknown error'}`);
+  }
 };
 
 /**
@@ -431,6 +585,17 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
+  const sanitizedExpenses = (backupData.expenses || []).map(e => ({
+    id: e.id,
+    date: e.date || new Date().toISOString().split('T')[0],
+    amount: Number(e.amount) || 0,
+    paidBy: e.paidBy || 'Amir Khan',
+    category: e.category || 'Others',
+    notes: e.notes || '',
+    isEmiPayment: Boolean(e.isEmiPayment),
+    createdAt: e.createdAt || new Date().toISOString()
+  }));
+
   const payload = {
     app: 'Family Expense Tracker',
     version: '2.0',
@@ -439,8 +604,8 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
     adminPin: backupData.adminPin || '1234',
     familyMembers: backupData.familyMembers || FAMILY_MEMBERS,
     memberConfigs: backupData.memberConfigs || {},
-    expensesCount: (backupData.expenses || []).length,
-    expenses: backupData.expenses || [],
+    expensesCount: sanitizedExpenses.length,
+    expenses: sanitizedExpenses,
     memberBankAmounts: backupData.memberBankAmounts || {},
     emis: backupData.emis || [],
     sips: backupData.sips || [],
@@ -470,7 +635,7 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(14, currentY, pageWidth - 28, 24, 3, 3, 'D');
 
-  const totalSpent = (backupData.expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalSpent = sanitizedExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
@@ -483,7 +648,7 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${(backupData.expenses || []).length} records`, 20, currentY + 16);
+  doc.text(`${sanitizedExpenses.length} records`, 20, currentY + 16);
   doc.setTextColor(79, 70, 229);
   doc.text(`Rs. ${totalSpent.toLocaleString('en-IN')}`, 75, currentY + 16);
   doc.setTextColor(15, 23, 42);
@@ -496,10 +661,10 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`1. Expenses Register (${(backupData.expenses || []).length} Records)`, 14, currentY);
+  doc.text(`1. Expenses Register (${sanitizedExpenses.length} Records)`, 14, currentY);
   currentY += 4;
 
-  const expenseRows = (backupData.expenses || []).map((exp, idx) => [
+  const expenseRows = sanitizedExpenses.map((exp, idx) => [
     (idx + 1).toString(),
     exp.date || '-',
     exp.paidBy || '-',
@@ -672,21 +837,37 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
     currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  // Embed restore JSON payload block on dedicated page
+  // Embed restore Base64 payload block across dedicated page(s)
   doc.addPage();
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.text('SYSTEM RESTORE DATA PAYLOAD (DO NOT EDIT)', 14, 15);
 
-  const jsonPayloadString = JSON.stringify(payload);
-  const encodedPayload = `--- BACKUP_DATA_START --- ${jsonPayloadString} --- BACKUP_DATA_END ---`;
+  const jsonStr = JSON.stringify(payload);
+  const base64Data = btoa(unescape(encodeURIComponent(jsonStr)));
+  const headerMarker = '===FULL_BACKUP_DATA_START===';
+  const footerMarker = '===FULL_BACKUP_DATA_END===';
 
   doc.setFont('courier', 'normal');
-  doc.setFontSize(4.5);
-  doc.setTextColor(160, 160, 160);
+  doc.setFontSize(4);
+  doc.setTextColor(180, 180, 180);
 
-  const lines = doc.splitTextToSize(encodedPayload, pageWidth - 28);
-  doc.text(lines, 14, 22);
+  const chunks = base64Data.match(/.{1,90}/g) || [base64Data];
+  const payloadLines = [headerMarker, ...chunks, footerMarker];
+
+  let lineY = 22;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  for (const line of payloadLines) {
+    if (lineY > pageHeight - 15) {
+      doc.addPage();
+      lineY = 20;
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(4);
+      doc.setTextColor(180, 180, 180);
+    }
+    doc.text(line, 14, lineY);
+    lineY += 2.2;
+  }
 
   // Footer on all pages
   const pageCount = (doc as any).internal.getNumberOfPages();
@@ -959,28 +1140,116 @@ export const parseExpensesCSV = (csvText: string): { validExpenses: Omit<Expense
 };
 
 /**
+ * PARSE FULL BACKUP CSV FILE
+ */
+export const parseBackupCSV = (csvText: string): {
+  success: boolean;
+  data: FullBackupData | null;
+  error: string | null;
+} => {
+  try {
+    const { validExpenses, errors } = parseExpensesCSV(csvText);
+    if (validExpenses.length === 0) {
+      return {
+        success: false,
+        data: null,
+        error: errors.length > 0 ? errors.join('; ') : 'No valid records could be extracted from CSV file.'
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        expenses: validExpenses as Expense[],
+      },
+      error: null
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      data: null,
+      error: `Failed to parse CSV backup: ${e?.message || 'Invalid format'}`
+    };
+  }
+};
+
+/**
  * PARSE JSON BACKUP FILE
  */
 export const parseBackupJSON = (jsonText: string) => {
   try {
     const parsed = JSON.parse(jsonText);
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Invalid JSON format.');
+    if (!parsed || (typeof parsed !== 'object' && !Array.isArray(parsed))) {
+      throw new Error('Invalid or empty JSON format.');
     }
 
-    const expenses: Expense[] = Array.isArray(parsed.expenses) ? parsed.expenses : [];
-    const memberBankAmounts: Record<FamilyMember, MemberBankAmount> | undefined =
-      parsed.memberBankAmounts && typeof parsed.memberBankAmounts === 'object'
-        ? parsed.memberBankAmounts
-        : undefined;
-    const emis: EmiPlan[] | undefined = Array.isArray(parsed.emis) ? parsed.emis : undefined;
-    const sips: SipPlan[] | undefined = Array.isArray(parsed.sips) ? parsed.sips : undefined;
-    const debts: DebtRecord[] | undefined = Array.isArray(parsed.debts) ? parsed.debts : undefined;
-    const monthlyBudget: number | undefined = typeof parsed.monthlyBudget === 'number' ? parsed.monthlyBudget : undefined;
-    const adminPin: string | undefined = typeof parsed.adminPin === 'string' ? parsed.adminPin : undefined;
-    const familyMembers: string[] | undefined = Array.isArray(parsed.familyMembers) ? parsed.familyMembers : undefined;
-    const memberConfigs: Record<string, MemberCustomConfig> | undefined =
-      parsed.memberConfigs && typeof parsed.memberConfigs === 'object' ? parsed.memberConfigs : undefined;
+    let expenses: Expense[] = [];
+    let memberBankAmounts: Record<FamilyMember, MemberBankAmount> | undefined = undefined;
+    let emis: EmiPlan[] | undefined = undefined;
+    let sips: SipPlan[] | undefined = undefined;
+    let debts: DebtRecord[] | undefined = undefined;
+    let monthlyBudget: number | undefined = undefined;
+    let adminPin: string | undefined = undefined;
+    let familyMembers: string[] | undefined = undefined;
+    let memberConfigs: Record<string, MemberCustomConfig> | undefined = undefined;
+
+    // Case A: Direct Array of Expense objects
+    if (Array.isArray(parsed)) {
+      expenses = parsed.map((item: any, idx: number) => ({
+        id: item.id || `json_exp_${Date.now()}_${idx}`,
+        date: item.date || item.createdDate || new Date().toISOString().split('T')[0],
+        amount: Number(item.amount || item.price || item.cost || 0),
+        paidBy: item.paidBy || item.member || item.paid_by || 'Amir Khan',
+        category: item.category || item.type || 'Others',
+        notes: item.notes || item.description || item.title || '',
+        isEmiPayment: Boolean(item.isEmiPayment || item.is_emi),
+        createdAt: item.createdAt || new Date().toISOString()
+      })).filter((e: any) => e.amount > 0);
+    }
+    // Case B: JSON Object
+    else if (typeof parsed === 'object') {
+      const rawExpensesList = Array.isArray(parsed.expenses)
+        ? parsed.expenses
+        : Array.isArray(parsed.data)
+        ? parsed.data
+        : Array.isArray(parsed.transactions)
+        ? parsed.transactions
+        : Array.isArray(parsed.records)
+        ? parsed.records
+        : Array.isArray(parsed.items)
+        ? parsed.items
+        : [];
+
+      expenses = rawExpensesList.map((item: any, idx: number) => ({
+        id: item.id || `json_exp_${Date.now()}_${idx}`,
+        date: item.date || item.createdDate || new Date().toISOString().split('T')[0],
+        amount: Number(item.amount || item.price || item.cost || 0),
+        paidBy: item.paidBy || item.member || item.paid_by || parsed.member || 'Amir Khan',
+        category: item.category || item.type || 'Others',
+        notes: item.notes || item.description || item.title || '',
+        isEmiPayment: Boolean(item.isEmiPayment || item.is_emi),
+        createdAt: item.createdAt || new Date().toISOString()
+      })).filter((e: any) => e.amount > 0);
+
+      if (parsed.memberBankAmounts && typeof parsed.memberBankAmounts === 'object') {
+        memberBankAmounts = parsed.memberBankAmounts;
+      }
+      if (Array.isArray(parsed.emis)) emis = parsed.emis;
+      if (Array.isArray(parsed.sips)) sips = parsed.sips;
+      if (Array.isArray(parsed.debts)) debts = parsed.debts;
+      if (typeof parsed.monthlyBudget === 'number') monthlyBudget = parsed.monthlyBudget;
+      if (typeof parsed.adminPin === 'string') adminPin = parsed.adminPin;
+      if (Array.isArray(parsed.familyMembers)) familyMembers = parsed.familyMembers;
+      if (parsed.memberConfigs && typeof parsed.memberConfigs === 'object') memberConfigs = parsed.memberConfigs;
+    }
+
+    if (expenses.length === 0 && !memberBankAmounts && !emis && !sips && !debts) {
+      return {
+        success: false,
+        data: null,
+        error: 'JSON file does not contain any recognizable expenses, bank balances, or backup records.'
+      };
+    }
 
     return {
       success: true,
@@ -1001,7 +1270,7 @@ export const parseBackupJSON = (jsonText: string) => {
     return {
       success: false,
       data: null,
-      error: e?.message || 'Failed to parse JSON file'
+      error: `Failed to parse JSON file: ${e?.message || 'Syntax error'}`
     };
   }
 };
@@ -1013,16 +1282,49 @@ export const parseExpensesFromTextLines = (lines: string[]): { validExpenses: Om
   const validExpenses: Omit<Expense, 'id'>[] = [];
   const errors: string[] = [];
 
-  const dateRegex = /\b(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})\b/i;
+  console.log(`[PDF Text Line Parser] Analyzing ${lines.length} text lines extracted from PDF...`);
 
-  lines.forEach((line) => {
-    // Skip general headers
+  const dateRegex = /\b(\d{4}[-/. ]\d{1,2}[-/. ]\d{1,2}|\d{1,2}[-/. ]\d{1,2}[-/. ]\d{2,4}|\d{1,2}[-/. ](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-/. ]\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4})\b/i;
+
+  const standardizeDateStr = (rawDateStr: string): string => {
+    if (!rawDateStr) return new Date().toISOString().split('T')[0];
+    const clean = rawDateStr.trim().replace(/\./g, '-').replace(/\//g, '-');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+    
+    const matchYMD = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (matchYMD) {
+      return `${matchYMD[1]}-${matchYMD[2].padStart(2, '0')}-${matchYMD[3].padStart(2, '0')}`;
+    }
+
+    const matchDMY = clean.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+    if (matchDMY) {
+      let day = parseInt(matchDMY[1], 10);
+      let month = parseInt(matchDMY[2], 10);
+      let year = parseInt(matchDMY[3], 10);
+      if (year < 100) year += 2000;
+      if (month > 12 && day <= 12) {
+        const tmp = day; day = month; month = tmp;
+      }
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    const parsed = new Date(rawDateStr.replace(/-/g, ' '));
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+  };
+
+  lines.forEach((line, index) => {
     if (/TOTAL|SUMMARY|BREAKDOWN|PAGE\s+\d+|FINANCIAL\s+REPORT|STATEMENT\s+DATE/i.test(line) && !dateRegex.test(line)) {
+      console.log(`[PDF Line ${index + 1}] Header/summary line skipped: "${line}"`);
       return;
     }
 
     const dateMatch = line.match(dateRegex);
-    if (!dateMatch) return;
+    if (!dateMatch) {
+      return;
+    }
 
     const tokens = line.split(/\s+/);
     let foundAmount: number | null = null;
@@ -1043,18 +1345,12 @@ export const parseExpensesFromTextLines = (lines: string[]): { validExpenses: Om
       }
     }
 
-    if (!foundAmount) return;
-
-    let formattedDate = new Date().toISOString().split('T')[0];
-    const rawDate = dateMatch[1];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-      formattedDate = rawDate;
-    } else {
-      const parsedD = new Date(rawDate.replace(/-/g, '/'));
-      if (!isNaN(parsedD.getTime())) {
-        formattedDate = parsedD.toISOString().split('T')[0];
-      }
+    if (!foundAmount) {
+      console.log(`[PDF Line ${index + 1}] Date found (${dateMatch[0]}) but no valid amount in line: "${line}"`);
+      return;
     }
+
+    const formattedDate = standardizeDateStr(dateMatch[1]);
 
     const matchedMember = FAMILY_MEMBERS.find(m =>
       line.toLowerCase().includes(m.toLowerCase())
@@ -1077,20 +1373,24 @@ export const parseExpensesFromTextLines = (lines: string[]): { validExpenses: Om
       notes = `${matchedCategory} expense`;
     }
 
-    validExpenses.push({
+    const expenseRecord = {
       date: formattedDate,
       amount: foundAmount,
       paidBy: matchedMember,
       category: matchedCategory,
       notes: notes,
       createdAt: new Date().toISOString()
-    });
+    };
+
+    console.log(`[PDF Line ${index + 1}] Parsed expense:`, expenseRecord);
+    validExpenses.push(expenseRecord);
   });
 
   if (validExpenses.length === 0) {
     errors.push('No valid expense entries with dates and amounts found in PDF statement.');
   }
 
+  console.log(`[PDF Text Line Parser] Completed. Matched ${validExpenses.length} valid expenses.`);
   return { validExpenses, errors };
 };
 
@@ -1100,7 +1400,7 @@ export const parseExpensesFromTextLines = (lines: string[]): { validExpenses: Om
 export const parseExpensesPDF = async (fileBuffer: ArrayBuffer): Promise<{ validExpenses: Omit<Expense, 'id'>[]; errors: string[] }> => {
   try {
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
     }
 
     const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
@@ -1165,7 +1465,7 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
 }> => {
   try {
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
     }
 
     const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
@@ -1207,23 +1507,42 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
       }
     }
 
-    // 1. Check for embedded backup payload
-    const match = fullText.match(/---\s*BACKUP_DATA_START\s*---\s*(\{[\s\S]*?\})\s*---\s*BACKUP_DATA_END\s*---/i) ||
-                  fullText.match(/(\{[\s\S]*?"expenses"\s*:[\s\S]*?\})/);
+    // 1. Check for Base64 embedded payload markers
+    const startIdx = fullText.indexOf('===FULL_BACKUP_DATA_START===');
+    const endIdx = fullText.indexOf('===FULL_BACKUP_DATA_END===');
 
-    if (match && match[1]) {
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const rawSegment = fullText.substring(startIdx + '===FULL_BACKUP_DATA_START==='.length, endIdx);
+      const cleanBase64 = rawSegment.replace(/\s+/g, '');
       try {
-        const parsed = JSON.parse(match[1].trim());
+        const decodedJsonStr = decodeURIComponent(escape(atob(cleanBase64)));
+        const parsed = JSON.parse(decodedJsonStr);
         const result = parseBackupJSON(JSON.stringify(parsed));
         if (result.success && result.data) {
           return result;
         }
       } catch (err) {
-        console.warn('Failed to parse embedded PDF backup payload, falling back to line extraction');
+        console.warn('Failed to decode Base64 backup payload from PDF:', err);
       }
     }
 
-    // 2. Fallback: Parse expenses from text lines
+    // 2. Check for legacy raw JSON embedded payload
+    const legacyMatch = fullText.match(/---\s*BACKUP_DATA_START\s*---\s*(\{[\s\S]*?\})\s*---\s*BACKUP_DATA_END\s*---/i) ||
+                        fullText.match(/(\{[\s\S]*?"expenses"\s*:[\s\S]*?\})/);
+
+    if (legacyMatch && legacyMatch[1]) {
+      try {
+        const parsed = JSON.parse(legacyMatch[1].trim());
+        const result = parseBackupJSON(JSON.stringify(parsed));
+        if (result.success && result.data) {
+          return result;
+        }
+      } catch (err) {
+        console.warn('Failed to parse legacy embedded PDF backup payload');
+      }
+    }
+
+    // 3. Fallback: Parse expenses from text lines
     const { validExpenses, errors } = parseExpensesFromTextLines(allLines);
     if (validExpenses.length > 0) {
       return {
