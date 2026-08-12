@@ -53,11 +53,30 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
 }) => {
   const isDark = theme === 'dark';
 
+  // Time & Date format helpers
+  const format12HourTime = (time24?: string) => {
+    if (!time24) return '';
+    const [hStr, mStr] = time24.split(':');
+    if (hStr === undefined || mStr === undefined) return time24;
+    let h = parseInt(hStr, 10);
+    if (isNaN(h)) return time24;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${h}:${mStr} ${ampm}`;
+  };
+
+  const getCurrentDateStr = () => new Date().toISOString().slice(0, 10);
+  const getCurrentTimeStr = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
   // Filters & Search state
   const [filterType, setFilterType] = useState<'all' | 'borrowed' | 'given' | 'settled'>('all');
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [sortBy, setSortBy] = useState<'dueDate' | 'amount' | 'remainingAmount'>('dueDate');
+  const [sortBy, setSortBy] = useState<'dueDate' | 'startDate' | 'amount' | 'remainingAmount'>('dueDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modals state
@@ -71,7 +90,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
   const [totalAmount, setTotalAmount] = useState('');
   const [remainingAmount, setRemainingAmount] = useState('');
   const [paidBy, setPaidBy] = useState<FamilyMember>(activeMember);
+  const [startDate, setStartDate] = useState(getCurrentDateStr());
+  const [startTime, setStartTime] = useState(getCurrentTimeStr());
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [notes, setNotes] = useState('');
   const [bankImpact, setBankImpact] = useState<'increase' | 'decrease' | 'none'>('increase');
   const [isSaving, setIsSaving] = useState(false);
@@ -110,8 +132,12 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
     .sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'dueDate') {
-        const timeA = a.dueDate ? new Date(a.dueDate).getTime() : 9999999999999;
-        const timeB = b.dueDate ? new Date(b.dueDate).getTime() : 9999999999999;
+        const timeA = a.dueDate ? new Date(`${a.dueDate}T${a.dueTime || '23:59'}`).getTime() : 9999999999999;
+        const timeB = b.dueDate ? new Date(`${b.dueDate}T${b.dueTime || '23:59'}`).getTime() : 9999999999999;
+        comparison = timeA - timeB;
+      } else if (sortBy === 'startDate') {
+        const timeA = a.startDate ? new Date(`${a.startDate}T${a.time || '00:00'}`).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const timeB = b.startDate ? new Date(`${b.startDate}T${b.time || '00:00'}`).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
         comparison = timeA - timeB;
       } else if (sortBy === 'amount') {
         comparison = (a.totalAmount || 0) - (b.totalAmount || 0);
@@ -144,7 +170,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
       setTotalAmount(debtToEdit.totalAmount.toString());
       setRemainingAmount(debtToEdit.remainingAmount.toString());
       setPaidBy(debtToEdit.paidBy);
+      setStartDate(debtToEdit.startDate || getCurrentDateStr());
+      setStartTime(debtToEdit.time || getCurrentTimeStr());
       setDueDate(debtToEdit.dueDate || '');
+      setDueTime(debtToEdit.dueTime || '');
       setNotes(debtToEdit.notes || '');
       setBankImpact(debtToEdit.type === 'given' ? 'decrease' : 'increase');
     } else {
@@ -155,7 +184,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
       setTotalAmount('');
       setRemainingAmount('');
       setPaidBy(activeMember || familyMembers[0] || 'Amir Khan');
+      setStartDate(getCurrentDateStr());
+      setStartTime(getCurrentTimeStr());
       setDueDate('');
+      setDueTime('');
       setNotes('');
       setBankImpact('increase');
     }
@@ -180,7 +212,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
           totalAmount: totAmt,
           remainingAmount: Math.max(0, remAmt),
           paidBy,
+          startDate: startDate || undefined,
+          time: startTime || undefined,
           dueDate: dueDate || undefined,
+          dueTime: dueTime || undefined,
           notes: notes.trim(),
           status: remAmt <= 0 ? 'settled' : 'active',
           addedByMember: activeMember,
@@ -464,12 +499,13 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
               </div>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'dueDate' | 'amount' | 'remainingAmount')}
+                onChange={(e) => setSortBy(e.target.value as 'dueDate' | 'startDate' | 'amount' | 'remainingAmount')}
                 className={`flex-1 sm:w-auto px-3.5 py-2 rounded-xl text-xs font-extrabold border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
                   isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                 }`}
               >
                 <option value="dueDate">Due Date</option>
+                <option value="startDate">Taken / Lent Date</option>
                 <option value="amount">Total Amount</option>
                 <option value="remainingAmount">Remaining Amount</option>
               </select>
@@ -625,8 +661,8 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Meta Details: Due Date & Responsible Member */}
-                    <div className="flex items-center justify-between gap-2 pt-1 text-xs">
+                    {/* Meta Details: Dates, Times & Responsible Member */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
                       
                       {/* Responsible Member Tag */}
                       <div className="flex items-center gap-1.5">
@@ -635,13 +671,28 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Due Date Tag */}
-                      {debt.dueDate && (
-                        <div className="flex items-center gap-1 text-[11px] font-extrabold text-amber-600 dark:text-amber-400">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Due: {debt.dueDate}</span>
-                        </div>
-                      )}
+                      {/* Date & Time Badges */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {(debt.startDate || debt.time) && (
+                          <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                            <Calendar className="w-3 h-3 text-indigo-500" />
+                            <span>
+                              {debt.startDate || ''}
+                              {debt.time ? ` @ ${format12HourTime(debt.time)}` : ''}
+                            </span>
+                          </div>
+                        )}
+
+                        {(debt.dueDate || debt.dueTime) && (
+                          <div className="flex items-center gap-1 text-[11px] font-extrabold text-amber-600 dark:text-amber-400">
+                            <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            <span>
+                              Due: {debt.dueDate || ''}
+                              {debt.dueTime ? ` @ ${format12HourTime(debt.dueTime)}` : ''}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Notes if present */}
@@ -869,34 +920,66 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                 </div>
               </div>
 
-              {/* Responsible Member & Due Date */}
+              {/* Responsible Member */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1.5">
+                  Responsible Member
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {familyMembers.map((m) => {
+                    const isSelected = paidBy === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setPaidBy(m as FamilyMember)}
+                        className={`flex items-center gap-2 p-2 rounded-2xl border text-left text-xs font-black transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-50 dark:bg-slate-800 border-2 border-emerald-600 text-slate-900 dark:text-white shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <MemberAvatar member={m} memberConfigs={memberConfigs} size="xs" isActive={isSelected} />
+                        <span className="truncate">{m}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Borrowed / Lent Date & Time */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1.5">
-                    Responsible Member
+                  <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1">
+                    {type === 'borrowed' ? 'Borrowed Date *' : 'Lent Date *'}
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {familyMembers.map((m) => {
-                      const isSelected = paidBy === m;
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setPaidBy(m as FamilyMember)}
-                          className={`flex items-center gap-2 p-2 rounded-2xl border text-left text-xs font-black transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-emerald-50 dark:bg-slate-800 border-2 border-emerald-600 text-slate-900 dark:text-white shadow-xs'
-                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800'
-                          }`}
-                        >
-                          <MemberAvatar member={m} memberConfigs={memberConfigs} size="xs" isActive={isSelected} />
-                          <span className="truncate">{m}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                    required
+                  />
                 </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1">
+                    Time (HH:MM)
+                  </label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
+                </div>
+              </div>
 
+              {/* Target Due Date & Time */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1">
                     Target Due Date
@@ -905,6 +988,19 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1">
+                    Due Time (Optional)
+                  </label>
+                  <input
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
