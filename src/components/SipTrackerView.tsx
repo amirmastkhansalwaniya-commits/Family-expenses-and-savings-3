@@ -6,7 +6,8 @@ import {
   ADMIN_MEMBER, 
   MemberCustomConfig, 
   getMemberTheme,
-  SIP_FUND_CATEGORIES
+  SIP_FUND_CATEGORIES,
+  SIP_GOAL_OPTIONS
 } from '../types';
 import { formatINR, formatINRCompact, formatMonthName, getCurrentMonthKey } from '../utils/formatters';
 import { Language, t, translateMemberName, translateCategoryLabel } from '../utils/translations';
@@ -136,6 +137,12 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
   // Filter State for Trackers List
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused' | 'completed'>('active');
   const [memberFilter, setMemberFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [goalFilter, setGoalFilter] = useState<string>('all');
+
+  // Custom Category & Goal States
+  const [customCategoryInput, setCustomCategoryInput] = useState<string>('');
+  const [customGoalInput, setCustomGoalInput] = useState<string>('');
 
   // Form State for Add / Edit Modal
   const [formTitle, setFormTitle] = useState<string>('');
@@ -226,14 +233,33 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
     };
   }, [activeSipsList]);
 
+  // Available Category & Goal Options for Filter Dropdowns
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    sips.forEach((s) => {
+      if (s.fundCategory) set.add(s.fundCategory);
+    });
+    return Array.from(set);
+  }, [sips]);
+
+  const availableGoals = useMemo(() => {
+    const set = new Set<string>();
+    sips.forEach((s) => {
+      if (s.goalName) set.add(s.goalName);
+    });
+    return Array.from(set);
+  }, [sips]);
+
   // Filtered SIP list for display
   const filteredSips = useMemo(() => {
     return sips.filter((s) => {
       const matchStatus = statusFilter === 'all' || s.status === statusFilter;
       const matchMember = memberFilter === 'all' || s.paidBy === memberFilter;
-      return matchStatus && matchMember;
+      const matchCategory = categoryFilter === 'all' || s.fundCategory === categoryFilter;
+      const matchGoal = goalFilter === 'all' || s.goalName === goalFilter;
+      return matchStatus && matchMember && matchCategory && matchGoal;
     });
-  }, [sips, statusFilter, memberFilter]);
+  }, [sips, statusFilter, memberFilter, categoryFilter, goalFilter]);
 
   // Handle Open Add Modal
   const handleOpenAddModal = (initialCalcData?: { monthly: number; rate: number; tenure: number; stepUp: number }) => {
@@ -253,7 +279,9 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
     }
     setFormPaidBy(activeMember || familyMembers[0] || 'Amir Khan');
     setFormCategory('Mutual Funds (Equity)');
+    setCustomCategoryInput('');
     setFormGoal('Wealth Generation');
+    setCustomGoalInput('');
     setFormStartMonth(getCurrentMonthKey());
     setFormCompletedMonths(1);
     setFormNotes('');
@@ -268,8 +296,26 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
     setFormRate(sip.expectedRateOfReturn || 12);
     setFormTenure(sip.tenureYears || 10);
     setFormPaidBy(sip.paidBy);
-    setFormCategory(sip.fundCategory || 'Mutual Funds (Equity)');
-    setFormGoal(sip.goalName || 'Wealth Generation');
+
+    const cat = sip.fundCategory || 'Mutual Funds (Equity)';
+    const goal = sip.goalName || 'Wealth Generation';
+
+    if (SIP_FUND_CATEGORIES.includes(cat as any) && cat !== 'Other / Custom Category') {
+      setFormCategory(cat);
+      setCustomCategoryInput('');
+    } else {
+      setFormCategory('Other / Custom Category');
+      setCustomCategoryInput(cat);
+    }
+
+    if (SIP_GOAL_OPTIONS.includes(goal as any) && goal !== 'Other / Custom Goal') {
+      setFormGoal(goal);
+      setCustomGoalInput('');
+    } else {
+      setFormGoal('Other / Custom Goal');
+      setCustomGoalInput(goal);
+    }
+
     setFormStartMonth(sip.startMonth || getCurrentMonthKey());
     setFormCompletedMonths(sip.completedMonths || 0);
     setFormStepUp(sip.stepUpPercentage || 0);
@@ -289,6 +335,18 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
       return;
     }
 
+    const finalCategory = formCategory === 'Other / Custom Category' ? customCategoryInput.trim() : formCategory.trim();
+    const finalGoal = formGoal === 'Other / Custom Goal' ? customGoalInput.trim() : formGoal.trim();
+
+    if (!finalCategory) {
+      alert('Please select or type a valid Fund Category.');
+      return;
+    }
+    if (!finalGoal) {
+      alert('Please select or type a valid Goal / Purpose.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payloadData: Omit<SipPlan, 'id'> = {
@@ -299,8 +357,8 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
         startMonth: formStartMonth,
         completedMonths: Number(formCompletedMonths),
         paidBy: formPaidBy,
-        fundCategory: formCategory,
-        goalName: formGoal,
+        fundCategory: finalCategory,
+        goalName: finalGoal,
         notes: formNotes.trim(),
         status: editingSip ? editingSip.status : 'active',
         stepUpPercentage: Number(formStepUp),
@@ -520,24 +578,71 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
               </button>
             </div>
 
-            {/* Member Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-indigo-500" />
-              <span className="text-xs font-bold text-slate-500">Member:</span>
-              <select
-                value={memberFilter}
-                onChange={(e) => setMemberFilter(e.target.value)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black border focus:outline-none cursor-pointer ${
-                  isDark 
-                    ? 'bg-slate-800 border-slate-700 text-white' 
-                    : 'bg-slate-50 border-slate-200 text-slate-900'
-                }`}
-              >
-                <option value="all">All Family Members</option>
-                {familyMembers.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+            {/* Member, Category & Goal Filter Dropdowns */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Member Filter Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="text-xs font-bold text-slate-500">Member:</span>
+                <select
+                  value={memberFilter}
+                  onChange={(e) => setMemberFilter(e.target.value)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-black border focus:outline-none cursor-pointer ${
+                    isDark 
+                      ? 'bg-slate-800 border-slate-700 text-white' 
+                      : 'bg-slate-50 border-slate-200 text-slate-900'
+                  }`}
+                >
+                  <option value="all">All Members</option>
+                  {familyMembers.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Category Filter Dropdown */}
+              {availableCategories.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className="text-xs font-bold text-slate-500">Category:</span>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-black border focus:outline-none cursor-pointer max-w-[140px] truncate ${
+                      isDark 
+                        ? 'bg-slate-800 border-slate-700 text-white' 
+                        : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="all">All Categories</option>
+                    {availableCategories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Goal Filter Dropdown */}
+              {availableGoals.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-xs font-bold text-slate-500">Goal:</span>
+                  <select
+                    value={goalFilter}
+                    onChange={(e) => setGoalFilter(e.target.value)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-black border focus:outline-none cursor-pointer max-w-[140px] truncate ${
+                      isDark 
+                        ? 'bg-slate-800 border-slate-700 text-white' 
+                        : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="all">All Goals</option>
+                    {availableGoals.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -804,21 +909,29 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
                   <label className="text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                     Monthly SIP Amount:
                   </label>
-                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-2.5 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                    {formatINR(calcMonthly)}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={calcMonthly || ''}
+                      onChange={(e) => setCalcMonthly(e.target.value === '' ? 0 : Number(e.target.value))}
+                      className="w-28 text-sm font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
                 </div>
                 <input
                   type="range"
-                  min="500"
+                  min="1"
                   max="200000"
-                  step="500"
+                  step="1"
                   value={calcMonthly}
                   onChange={(e) => setCalcMonthly(Number(e.target.value))}
                   className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
                 <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                  <span>₹500/mo</span>
+                  <span>₹1/mo</span>
                   <span>₹1,00,000/mo</span>
                   <span>₹2,00,000/mo</span>
                 </div>
@@ -1101,10 +1214,11 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
                   <input
                     type="number"
                     required
-                    min="100"
-                    step="500"
-                    value={formMonthlyAmount}
-                    onChange={(e) => setFormMonthlyAmount(Number(e.target.value))}
+                    min="1"
+                    step="any"
+                    placeholder="e.g. 2500"
+                    value={formMonthlyAmount || ''}
+                    onChange={(e) => setFormMonthlyAmount(e.target.value === '' ? 0 : Number(e.target.value))}
                     className={`w-full p-3 rounded-2xl border text-sm font-bold font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
@@ -1166,15 +1280,21 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
               </div>
 
               {/* Fund Category & Goal Grid */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Fund Category Selection */}
                 <div className="space-y-1">
-                  <label className="text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                    Fund Category
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-600 dark:text-slate-300 uppercase tracking-wider text-xs font-bold">
+                      Fund Category *
+                    </label>
+                    {formCategory === 'Other / Custom Category' && (
+                      <span className="text-[10px] font-extrabold text-indigo-500 uppercase">Custom Input</span>
+                    )}
+                  </div>
                   <select
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className={`w-full p-3 rounded-2xl border text-xs font-bold focus:outline-none ${
+                    className={`w-full p-3 rounded-2xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                   >
@@ -1182,26 +1302,55 @@ export const SipTrackerView: React.FC<SipTrackerViewProps> = ({
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
+
+                  {formCategory === 'Other / Custom Category' && (
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Defense Fund, Web3 Crypto, REITs"
+                      value={customCategoryInput}
+                      onChange={(e) => setCustomCategoryInput(e.target.value)}
+                      className={`w-full mt-1.5 p-2.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                        isDark ? 'bg-slate-800 border-slate-700 text-indigo-300' : 'bg-indigo-50/60 border-indigo-200 text-indigo-900'
+                      }`}
+                    />
+                  )}
                 </div>
 
+                {/* Goal / Purpose Selection */}
                 <div className="space-y-1">
-                  <label className="text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                    Goal / Purpose
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-600 dark:text-slate-300 uppercase tracking-wider text-xs font-bold">
+                      Goal / Purpose *
+                    </label>
+                    {formGoal === 'Other / Custom Goal' && (
+                      <span className="text-[10px] font-extrabold text-amber-500 uppercase">Custom Input</span>
+                    )}
+                  </div>
                   <select
                     value={formGoal}
                     onChange={(e) => setFormGoal(e.target.value)}
-                    className={`w-full p-3 rounded-2xl border text-xs font-bold focus:outline-none ${
+                    className={`w-full p-3 rounded-2xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 ${
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                   >
-                    <option value="Wealth Generation">Wealth Generation</option>
-                    <option value="Retirement Fund">Retirement Fund</option>
-                    <option value="Child Higher Education">Child Higher Education</option>
-                    <option value="Home Down Payment">Home Down Payment</option>
-                    <option value="Emergency Corpus">Emergency Corpus</option>
-                    <option value="Tax Saving (ELSS)">Tax Saving (ELSS)</option>
+                    {SIP_GOAL_OPTIONS.map((goal) => (
+                      <option key={goal} value={goal}>{goal}</option>
+                    ))}
                   </select>
+
+                  {formGoal === 'Other / Custom Goal' && (
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. World Tour 2028, House Construction"
+                      value={customGoalInput}
+                      onChange={(e) => setCustomGoalInput(e.target.value)}
+                      className={`w-full mt-1.5 p-2.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+                        isDark ? 'bg-slate-800 border-slate-700 text-amber-300' : 'bg-amber-50/60 border-amber-200 text-amber-900'
+                      }`}
+                    />
+                  )}
                 </div>
               </div>
 

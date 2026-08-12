@@ -18,7 +18,10 @@ import {
   Loader2,
   Clock,
   Building2,
-  PieChart
+  PieChart,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { DebtRecord, FamilyMember, getMemberTheme } from '../types';
 import { MemberAvatar } from './MemberAvatar';
@@ -54,6 +57,8 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'borrowed' | 'given' | 'settled'>('all');
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'dueDate' | 'amount' | 'remainingAmount'>('dueDate');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -68,6 +73,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
   const [paidBy, setPaidBy] = useState<FamilyMember>(activeMember);
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [bankImpact, setBankImpact] = useState<'increase' | 'decrease' | 'none'>('increase');
   const [isSaving, setIsSaving] = useState(false);
 
   // Repayment Modal state
@@ -79,27 +85,42 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
   const [deletingDebt, setDeletingDebt] = useState<DebtRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Filtered debts list
-  const filteredDebts = debts.filter((debt) => {
-    // Type / Status filter
-    if (filterType === 'borrowed' && (debt.type !== 'borrowed' || debt.status === 'settled')) return false;
-    if (filterType === 'given' && (debt.type !== 'given' || debt.status === 'settled')) return false;
-    if (filterType === 'settled' && debt.status !== 'settled') return false;
+  // Filtered and sorted debts list
+  const filteredDebts = debts
+    .filter((debt) => {
+      // Type / Status filter
+      if (filterType === 'borrowed' && (debt.type !== 'borrowed' || debt.status === 'settled')) return false;
+      if (filterType === 'given' && (debt.type !== 'given' || debt.status === 'settled')) return false;
+      if (filterType === 'settled' && debt.status !== 'settled') return false;
 
-    // Member filter
-    if (selectedMemberFilter !== 'all' && debt.paidBy !== selectedMemberFilter) return false;
+      // Member filter
+      if (selectedMemberFilter !== 'all' && debt.paidBy !== selectedMemberFilter) return false;
 
-    // Search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = debt.title.toLowerCase().includes(q);
-      const matchPerson = debt.personName.toLowerCase().includes(q);
-      const matchNotes = (debt.notes || '').toLowerCase().includes(q);
-      if (!matchTitle && !matchPerson && !matchNotes) return false;
-    }
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = debt.title.toLowerCase().includes(q);
+        const matchPerson = debt.personName.toLowerCase().includes(q);
+        const matchNotes = (debt.notes || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchPerson && !matchNotes) return false;
+      }
 
-    return true;
-  });
+      return true;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'dueDate') {
+        const timeA = a.dueDate ? new Date(a.dueDate).getTime() : 9999999999999;
+        const timeB = b.dueDate ? new Date(b.dueDate).getTime() : 9999999999999;
+        comparison = timeA - timeB;
+      } else if (sortBy === 'amount') {
+        comparison = (a.totalAmount || 0) - (b.totalAmount || 0);
+      } else if (sortBy === 'remainingAmount') {
+        comparison = (a.remainingAmount || 0) - (b.remainingAmount || 0);
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
 
   // KPI Calculations
   const activeDebts = debts.filter((d) => d.status === 'active');
@@ -125,6 +146,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
       setPaidBy(debtToEdit.paidBy);
       setDueDate(debtToEdit.dueDate || '');
       setNotes(debtToEdit.notes || '');
+      setBankImpact(debtToEdit.type === 'given' ? 'decrease' : 'increase');
     } else {
       setEditingDebt(null);
       setTitle('');
@@ -135,6 +157,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
       setPaidBy(activeMember || familyMembers[0] || 'Amir Khan');
       setDueDate('');
       setNotes('');
+      setBankImpact('increase');
     }
     setIsAddModalOpen(true);
   };
@@ -161,7 +184,8 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
           notes: notes.trim(),
           status: remAmt <= 0 ? 'settled' : 'active',
           addedByMember: activeMember,
-        },
+          bankImpact,
+        } as any,
         editingDebt?.id
       );
 
@@ -388,11 +412,11 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
             </button>
           </div>
 
-          {/* Search & Member Filter */}
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full lg:w-auto">
+          {/* Search, Member & Sort Filters */}
+          <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2.5 w-full lg:w-auto">
             
             {/* Search Input */}
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full sm:w-56">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -430,6 +454,45 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Sort Control */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <div className="flex items-center gap-1 text-xs font-extrabold text-slate-500 shrink-0">
+                <ArrowUpDown className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Sort:</span>
+              </div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'dueDate' | 'amount' | 'remainingAmount')}
+                className={`flex-1 sm:w-auto px-3.5 py-2 rounded-xl text-xs font-extrabold border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                }`}
+              >
+                <option value="dueDate">Due Date</option>
+                <option value="amount">Total Amount</option>
+                <option value="remainingAmount">Remaining Amount</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                title={sortOrder === 'asc' ? 'Ascending Order (Click to reverse)' : 'Descending Order (Click to reverse)'}
+                className={`px-2.5 py-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                  isDark 
+                    ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' 
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                {sortOrder === 'asc' ? (
+                  <span className="flex items-center gap-0.5 text-[10px] font-black uppercase text-indigo-500">
+                    <ArrowUp className="w-3.5 h-3.5" /> ASC
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-0.5 text-[10px] font-black uppercase text-indigo-500">
+                    <ArrowDown className="w-3.5 h-3.5" /> DESC
+                  </span>
+                )}
+              </button>
             </div>
 
           </div>
@@ -700,7 +763,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
                   <button
                     type="button"
-                    onClick={() => setType('borrowed')}
+                    onClick={() => {
+                      setType('borrowed');
+                      setBankImpact('increase');
+                    }}
                     className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       type === 'borrowed'
                         ? 'bg-rose-600 text-white shadow-xs'
@@ -712,7 +778,10 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setType('given')}
+                    onClick={() => {
+                      setType('given');
+                      setBankImpact('decrease');
+                    }}
                     className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       type === 'given'
                         ? 'bg-emerald-600 text-white shadow-xs'
@@ -777,7 +846,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                     min="0"
-                    step="100"
+                    step="any"
                     required
                   />
                 </div>
@@ -795,7 +864,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                       isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                     min="0"
-                    step="100"
+                    step="any"
                   />
                 </div>
               </div>
@@ -857,6 +926,48 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                     isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                   }`}
                 />
+              </div>
+
+              {/* Bank Account Impact */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Bank Account Impact
+                </label>
+                <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setBankImpact('increase')}
+                    className={`py-2 px-2 rounded-xl transition-all cursor-pointer text-center ${
+                      bankImpact === 'increase'
+                        ? 'bg-emerald-600 text-white shadow-xs font-black'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    + Increase Bank
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBankImpact('decrease')}
+                    className={`py-2 px-2 rounded-xl transition-all cursor-pointer text-center ${
+                      bankImpact === 'decrease'
+                        ? 'bg-rose-600 text-white shadow-xs font-black'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    - Decrease Bank
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBankImpact('none')}
+                    className={`py-2 px-2 rounded-xl transition-all cursor-pointer text-center ${
+                      bankImpact === 'none'
+                        ? 'bg-slate-700 text-white shadow-xs font-black'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    No Change
+                  </button>
+                </div>
               </div>
 
               {/* Submit buttons */}
@@ -928,6 +1039,7 @@ export const DebtTrackerView: React.FC<DebtTrackerViewProps> = ({
                     isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                   }`}
                   min="1"
+                  step="any"
                   max={repaymentModalDebt.remainingAmount}
                   required
                 />
