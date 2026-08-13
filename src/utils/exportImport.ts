@@ -497,7 +497,32 @@ export const exportBackupCSV = (backupData: FullBackupData) => {
 
     sections.push('');
 
-    // Section 3: Member Bank Accounts & Dues
+    // Section 3: Member Financial Breakdown & Bank Settlement
+    sections.push('--- MEMBER SPENDING & SETTLEMENT BREAKDOWN ---');
+    sections.push('Member Name,Total Spent (All Time),Spent This Month,Pending Bank Amount (INR),Status,Bank Name,UPI ID');
+    const currentMonthKey = new Date().toISOString().slice(0, 7);
+    const membersListCsv = backupData.familyMembers && backupData.familyMembers.length > 0 ? backupData.familyMembers : FAMILY_MEMBERS;
+    membersListCsv.forEach(m => {
+      const mTotal = (backupData.expenses || []).filter(e => e.paidBy === m).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const mMonth = (backupData.expenses || []).filter(e => e.paidBy === m && (e.date || '').startsWith(currentMonthKey)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const bInfo = backupData.memberBankAmounts?.[m];
+      const pAmt = bInfo?.pendingBankAmount || 0;
+      const statusStr = (bInfo?.status === 'received' || (bInfo?.status as string) === 'settled') ? 'SETTLED' : (pAmt > 0 ? 'PENDING' : 'SETTLED');
+
+      sections.push([
+        escapeCSVField(m),
+        escapeCSVField(mTotal),
+        escapeCSVField(mMonth),
+        escapeCSVField(pAmt),
+        escapeCSVField(statusStr),
+        escapeCSVField(bInfo?.bankName || 'Default Bank'),
+        escapeCSVField(bInfo?.upiId || '')
+      ].join(','));
+    });
+
+    sections.push('');
+
+    // Section 4: Member Bank Accounts & Dues Details
     sections.push('--- MEMBER BANK BALANCES ---');
     sections.push('Member,Pending Bank Amount (INR),Bank Name,UPI ID,Status,Last Updated,Notes');
     if (backupData.memberBankAmounts) {
@@ -570,6 +595,22 @@ export const exportBackupCSV = (backupData: FullBackupData) => {
       ].join(','));
     });
 
+    sections.push('');
+
+    // Section 7: Member Configurations & Admin Profiles
+    sections.push('--- MEMBER CONFIGURATIONS ---');
+    sections.push('Member Name,Emoji,Color,Photo URL');
+    if (backupData.memberConfigs) {
+      Object.entries(backupData.memberConfigs).forEach(([mName, cfg]) => {
+        sections.push([
+          escapeCSVField(mName),
+          escapeCSVField(cfg.emoji || ''),
+          escapeCSVField(cfg.color || ''),
+          escapeCSVField(cfg.photoUrl || '')
+        ].join(','));
+      });
+    }
+
     const csvContent = sections.join('\n');
     triggerDownload(csvContent, `family_expense_tracker_full_backup_${dateStr}.csv`, 'text/csv;charset=utf-8;');
   } catch (err: any) {
@@ -636,28 +677,32 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
   doc.roundedRect(14, currentY, pageWidth - 28, 24, 3, 3, 'D');
 
   const totalSpent = sanitizedExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const thisMonthExpenses = sanitizedExpenses.filter(e => (e.date || '').startsWith(currentMonthStr));
+  const thisMonthSpent = thisMonthExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL EXPENSES', 20, currentY + 7);
-  doc.text('TOTAL SPENT', 75, currentY + 7);
-  doc.text('ACTIVE EMIS & SIPS', 125, currentY + 7);
-  doc.text('MONTHLY BUDGET', 170, currentY + 7);
+  doc.text('TOTAL EXPENSES', 18, currentY + 7);
+  doc.text('SPENT (ALL TIME)', 62, currentY + 7);
+  doc.text('SPENT THIS MONTH', 110, currentY + 7);
+  doc.text('MONTHLY BUDGET', 160, currentY + 7);
 
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${sanitizedExpenses.length} records`, 20, currentY + 16);
+  doc.text(`${sanitizedExpenses.length} records`, 18, currentY + 16);
   doc.setTextColor(79, 70, 229);
-  doc.text(`Rs. ${totalSpent.toLocaleString('en-IN')}`, 75, currentY + 16);
+  doc.text(`Rs. ${totalSpent.toLocaleString('en-IN')}`, 62, currentY + 16);
+  doc.setTextColor(16, 185, 129);
+  doc.text(`Rs. ${thisMonthSpent.toLocaleString('en-IN')}`, 110, currentY + 16);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${(backupData.emis || []).length} EMI / ${(backupData.sips || []).length} SIP`, 125, currentY + 16);
-  doc.text(`Rs. ${(backupData.monthlyBudget || 50000).toLocaleString('en-IN')}`, 170, currentY + 16);
+  doc.text(`Rs. ${(backupData.monthlyBudget || 50000).toLocaleString('en-IN')}`, 160, currentY + 16);
 
   currentY += 32;
 
-  // Table 1: Expenses
+  // Table 1: Expenses Register
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
@@ -692,45 +737,60 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
 
   currentY = (doc as any).lastAutoTable.finalY + 10;
 
-  // Table 2: Member Bank Accounts
-  if (backupData.memberBankAmounts && Object.keys(backupData.memberBankAmounts).length > 0) {
-    if (currentY > 230) {
-      doc.addPage();
-      currentY = 20;
-    }
+  // Table 2: Member Spending & Settlement Breakdown
+  const membersList = backupData.familyMembers && backupData.familyMembers.length > 0 
+    ? backupData.familyMembers 
+    : FAMILY_MEMBERS;
 
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    doc.text('2. Member Bank Accounts & Dues', 14, currentY);
-    currentY += 4;
+  if (currentY > 220) {
+    doc.addPage();
+    currentY = 20;
+  }
 
-    const bankRows = Object.entries(backupData.memberBankAmounts).map(([m, b], i) => [
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('2. Member Spending & Bank Settlement Breakdown', 14, currentY);
+  currentY += 4;
+
+  const memberBreakdownRows = membersList.map((m, i) => {
+    const mTotal = sanitizedExpenses.filter(e => e.paidBy === m).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const mMonth = sanitizedExpenses.filter(e => e.paidBy === m && (e.date || '').startsWith(currentMonthStr)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const bInfo = backupData.memberBankAmounts?.[m];
+    const pAmt = bInfo?.pendingBankAmount || 0;
+    const bankDetails = `${bInfo?.bankName || 'Default Bank'}${bInfo?.upiId ? ` (${bInfo.upiId})` : ''}`;
+    const statusStr = (bInfo?.status === 'received' || (bInfo?.status as string) === 'settled') ? 'SETTLED' : (pAmt > 0 ? 'PENDING DUE' : 'SETTLED');
+
+    return [
       (i + 1).toString(),
       m,
-      b.bankName || 'Default Bank',
-      `Rs. ${(b.pendingBankAmount || 0).toLocaleString('en-IN')}`,
-      b.notes || '-'
-    ]);
+      `Rs. ${mTotal.toLocaleString('en-IN')}`,
+      `Rs. ${mMonth.toLocaleString('en-IN')}`,
+      `Rs. ${pAmt.toLocaleString('en-IN')}`,
+      bankDetails,
+      statusStr
+    ];
+  });
 
-    autoTable(doc, {
-      startY: currentY,
-      head: [['#', 'Member', 'Bank Name', 'Pending Bank Due', 'Notes']],
-      body: bankRows,
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 2.5 },
-      columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 45 },
-        3: { cellWidth: 40, halign: 'right', fontStyle: 'bold' },
-        4: { cellWidth: 52 }
-      }
-    });
+  autoTable(doc, {
+    startY: currentY,
+    head: [['#', 'Member Name', 'Total Spent (All)', 'Spent This Month', 'Pending Bank Due', 'Bank & UPI Details', 'Status']],
+    body: memberBreakdownRows,
+    theme: 'striped',
+    headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    columnStyles: {
+      0: { cellWidth: 8 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 28, halign: 'right' },
+      4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
+      5: { cellWidth: 42 },
+      6: { cellWidth: 20, halign: 'center', fontStyle: 'bold' }
+    }
+  });
 
-    currentY = (doc as any).lastAutoTable.finalY + 10;
-  }
+  currentY = (doc as any).lastAutoTable.finalY + 10;
 
   // Table 3: EMI Plans
   if (backupData.emis && backupData.emis.length > 0) {
@@ -837,14 +897,23 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
     currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
+  const jsonStr = JSON.stringify(payload);
+  const base64Data = btoa(unescape(encodeURIComponent(jsonStr)));
+
+  // Embed restore Base64 payload block in PDF Metadata for instant, lossless retrieval
+  doc.setProperties({
+    title: 'Family Expense Tracker Full Backup',
+    subject: 'FULL_APP_BACKUP_PAYLOAD',
+    keywords: base64Data,
+    author: 'Family Expense Tracker'
+  });
+
   // Embed restore Base64 payload block across dedicated page(s)
   doc.addPage();
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.text('SYSTEM RESTORE DATA PAYLOAD (DO NOT EDIT)', 14, 15);
 
-  const jsonStr = JSON.stringify(payload);
-  const base64Data = btoa(unescape(encodeURIComponent(jsonStr)));
   const headerMarker = '===FULL_BACKUP_DATA_START===';
   const footerMarker = '===FULL_BACKUP_DATA_END===';
 
@@ -1035,80 +1104,143 @@ export const exportExpensesToPDF = (params: ExportPDFParams) => {
 };
 
 /**
+ * PARSE CSV LINE RESPECTING QUOTES
+ */
+export const parseCSVLine = (line: string): string[] => {
+  const result: string[] = [];
+  let cur = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' || char === "'") {
+      if (inQuotes && line[i + 1] === char) {
+        cur += char;
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if ((char === ',' || char === ';') && !inQuotes) {
+      result.push(cur.trim());
+      cur = '';
+    } else {
+      cur += char;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+};
+
+/**
  * PARSE CSV TEXT INTO EXPENSE OBJECTS
  */
-export const parseExpensesCSV = (csvText: string): { validExpenses: Omit<Expense, 'id'>[]; errors: string[] } => {
-  const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
-  if (lines.length < 2) {
-    return { validExpenses: [], errors: ['CSV file appears empty or missing header row.'] };
+export const parseExpensesCSV = (csvText: string): { validExpenses: Expense[]; errors: string[] } => {
+  if (!csvText || !csvText.trim()) {
+    return { validExpenses: [], errors: ['CSV file appears empty.'] };
+  }
+  const cleanText = csvText.replace(/^\uFEFF/, '');
+  const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(line => line.length > 0);
+  if (lines.length === 0) {
+    return { validExpenses: [], errors: ['CSV file is empty.'] };
   }
 
-  // Simple CSV line splitter respecting quoted fields
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let cur = '';
-    let inQuotes = false;
+  const rawHeaderCols = parseCSVLine(lines[0]);
+  const headerLowerCols = rawHeaderCols.map(h => h.toLowerCase());
 
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"' || char === "'") {
-        if (inQuotes && line[i + 1] === char) {
-          cur += char;
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if ((char === ',' || char === ';') && !inQuotes) {
-        result.push(cur.trim());
-        cur = '';
-      } else {
-        cur += char;
-      }
-    }
-    result.push(cur.trim());
-    return result;
-  };
-
-  const headerLine = lines[0].toLowerCase();
-  const rawHeaders = parseCSVLine(headerLine);
-
-  // Column index finder helper
+  // Helper to find index by keywords
   const findColIndex = (keywords: string[]): number => {
-    return rawHeaders.findIndex(h => keywords.some(k => h.includes(k)));
+    return headerLowerCols.findIndex(h => keywords.some(k => h.includes(k)));
   };
 
-  const dateIdx = findColIndex(['date', 'दिनांक', 'time']);
-  const amountIdx = findColIndex(['amount', 'price', 'inr', 'rs', 'रुपये', 'राशि']);
-  const paidByIdx = findColIndex(['paidby', 'paid by', 'member', 'who', 'सदस्य']);
-  const categoryIdx = findColIndex(['category', 'type', 'श्रेणी']);
-  const notesIdx = findColIndex(['notes', 'description', 'title', 'detail', 'विवरण', 'नोट्स']);
+  let idIdx = findColIndex(['id', 'serial', 's.no', 'sr.no']);
+  let dateIdx = findColIndex(['date', 'दिनांक', 'time', 'dt', 'day', 'created']);
+  let amountIdx = findColIndex(['amount', 'price', 'inr', 'rs', 'rupee', 'rupees', 'रुपये', 'राशि', 'debit', 'spent', 'spend', 'cost', 'value', 'total', 'amt', 'money', 'expenditure', 'expense', 'payment']);
+  let paidByIdx = findColIndex(['paidby', 'paid by', 'member', 'who', 'सदस्य', 'person', 'payer', 'spent by', 'by', 'user', 'name', 'account']);
+  let categoryIdx = findColIndex(['category', 'type', 'श्रेणी', 'cat', 'head', 'group']);
+  let notesIdx = findColIndex(['notes', 'description', 'title', 'detail', 'particulars', 'remarks', 'reason', 'item', 'purpose', 'विवरण', 'नोट्स', 'desc', 'for']);
+  let emiIdx = findColIndex(['is emi', 'isemi', 'emi payment']);
 
-  const validExpenses: Omit<Expense, 'id'>[] = [];
+  // Check if line 0 is actually a data line (contains numbers/dates)
+  const isLine0Data = rawHeaderCols.some(c => {
+    const num = parseFloat(c.replace(/[^0-9.]/g, ''));
+    return (!isNaN(num) && num > 0) || /^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(c);
+  });
+
+  let startRow = 1;
+  if (isLine0Data || (amountIdx === -1 && dateIdx === -1 && paidByIdx === -1)) {
+    // Treat line 0 as data row if no matching headers found
+    startRow = 0;
+  }
+
+  // Fallback column indexing if amountIdx or dateIdx couldn't be determined from headers
+  if (amountIdx === -1 || dateIdx === -1) {
+    const sampleRowIndex = startRow < lines.length ? startRow : 0;
+    const sampleCols = parseCSVLine(lines[sampleRowIndex]);
+    
+    sampleCols.forEach((colVal, idx) => {
+      const cleanVal = colVal.trim();
+      const numVal = parseFloat(cleanVal.replace(/[^0-9.]/g, ''));
+
+      // Check date pattern
+      if (dateIdx === -1 && (/^\d{4}-\d{2}-\d{2}$/.test(cleanVal) || /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(cleanVal) || !isNaN(Date.parse(cleanVal)))) {
+        dateIdx = idx;
+      }
+      // Check amount pattern
+      else if (amountIdx === -1 && !isNaN(numVal) && numVal > 0 && numVal < 10000000) {
+        amountIdx = idx;
+      }
+      // Check paidBy pattern
+      else if (paidByIdx === -1 && FAMILY_MEMBERS.some(m => cleanVal.toLowerCase().includes(m.toLowerCase()))) {
+        paidByIdx = idx;
+      }
+      // Check category pattern
+      else if (categoryIdx === -1 && CATEGORIES.some(c => cleanVal.toLowerCase().includes(c.id.toLowerCase()) || cleanVal.toLowerCase().includes(c.label.toLowerCase()))) {
+        categoryIdx = idx;
+      }
+      else if (notesIdx === -1 && cleanVal.length > 2 && isNaN(numVal)) {
+        notesIdx = idx;
+      }
+    });
+  }
+
+  const validExpenses: Expense[] = [];
   const errors: string[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = startRow; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i]);
     if (cols.length === 0 || cols.every(c => c === '')) continue;
 
-    const rawDate = dateIdx !== -1 ? cols[dateIdx] : new Date().toISOString().split('T')[0];
-    const rawAmount = amountIdx !== -1 ? cols[amountIdx] : '0';
-    const rawPaidBy = paidByIdx !== -1 ? cols[paidByIdx] : FAMILY_MEMBERS[0];
-    const rawCategory = categoryIdx !== -1 ? cols[categoryIdx] : 'Others';
-    const rawNotes = notesIdx !== -1 ? cols[notesIdx] : '';
+    const rawId = idIdx !== -1 && cols[idIdx] ? cols[idIdx] : undefined;
+    const rawDate = dateIdx !== -1 && cols[dateIdx] ? cols[dateIdx] : new Date().toISOString().split('T')[0];
+    const rawAmount = amountIdx !== -1 && cols[amountIdx] ? cols[amountIdx] : '';
+    const rawPaidBy = paidByIdx !== -1 && cols[paidByIdx] ? cols[paidByIdx] : FAMILY_MEMBERS[0];
+    const rawCategory = categoryIdx !== -1 && cols[categoryIdx] ? cols[categoryIdx] : 'Others';
+    const rawNotes = notesIdx !== -1 && cols[notesIdx] ? cols[notesIdx] : '';
+    const rawIsEmi = emiIdx !== -1 && cols[emiIdx] ? cols[emiIdx] : 'No';
 
     // Parse amount
-    const cleanAmountStr = rawAmount.replace(/[^0-9.]/g, '');
-    const amount = parseFloat(cleanAmountStr);
+    const cleanAmountStr = rawAmount ? rawAmount.replace(/[^0-9.]/g, '') : '';
+    let amount = parseFloat(cleanAmountStr);
 
     if (isNaN(amount) || amount <= 0) {
-      errors.push(`Row ${i + 1}: Invalid or missing amount "${rawAmount}". Skipped.`);
-      continue;
+      // Try searching any numeric column in this row as fallback
+      for (const col of cols) {
+        const val = parseFloat(col.replace(/[^0-9.]/g, ''));
+        if (!isNaN(val) && val > 0 && val < 10000000) {
+          amount = val;
+          break;
+        }
+      }
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      continue; // Skip non-numeric or zero amount rows
     }
 
     // Match paidBy member
     const matchedMember = FAMILY_MEMBERS.find(
       m => m.toLowerCase() === rawPaidBy.toLowerCase() || rawPaidBy.toLowerCase().includes(m.toLowerCase())
-    ) || FAMILY_MEMBERS[0];
+    ) || (rawPaidBy && rawPaidBy.trim() ? rawPaidBy.trim() : FAMILY_MEMBERS[0]);
 
     // Match CategoryId
     const matchedCategory = (CATEGORIES.find(
@@ -1118,20 +1250,46 @@ export const parseExpensesCSV = (csvText: string): { validExpenses: Omit<Expense
     // Standardize date YYYY-MM-DD
     let formattedDate = rawDate;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
-      const parsedD = new Date(rawDate);
-      if (!isNaN(parsedD.getTime())) {
-        formattedDate = parsedD.toISOString().split('T')[0];
-      } else {
-        formattedDate = new Date().toISOString().split('T')[0];
+      const parts = rawDate.split(/[\/\.-]/);
+      if (parts.length === 3) {
+        let y = parseInt(parts[2], 10);
+        let m = parseInt(parts[1], 10);
+        let d = parseInt(parts[0], 10);
+        if (parts[0].length === 4) {
+          y = parseInt(parts[0], 10);
+          m = parseInt(parts[1], 10);
+          d = parseInt(parts[2], 10);
+        } else if (m > 12 && d <= 12) {
+          const tmp = m;
+          m = d;
+          d = tmp;
+        }
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d) && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          const yStr = y < 100 ? `20${y}` : `${y}`;
+          const mStr = m < 10 ? `0${m}` : `${m}`;
+          const dStr = d < 10 ? `0${d}` : `${d}`;
+          formattedDate = `${yStr}-${mStr}-${dStr}`;
+        }
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+        const parsedD = new Date(rawDate);
+        if (!isNaN(parsedD.getTime())) {
+          formattedDate = parsedD.toISOString().split('T')[0];
+        } else {
+          formattedDate = new Date().toISOString().split('T')[0];
+        }
       }
     }
 
     validExpenses.push({
+      id: rawId || `exp_csv_${Date.now()}_${i}`,
       date: formattedDate,
       amount,
       paidBy: matchedMember,
       category: matchedCategory,
-      notes: rawNotes.trim(),
+      notes: rawNotes.trim() || 'Imported Expense',
+      isEmiPayment: /^yes|true|1$/i.test(rawIsEmi),
       createdAt: new Date().toISOString()
     });
   }
@@ -1140,7 +1298,7 @@ export const parseExpensesCSV = (csvText: string): { validExpenses: Omit<Expense
 };
 
 /**
- * PARSE FULL BACKUP CSV FILE
+ * PARSE FULL BACKUP CSV FILE WITH MULTI-SECTION SUPPORT
  */
 export const parseBackupCSV = (csvText: string): {
   success: boolean;
@@ -1148,19 +1306,260 @@ export const parseBackupCSV = (csvText: string): {
   error: string | null;
 } => {
   try {
-    const { validExpenses, errors } = parseExpensesCSV(csvText);
-    if (validExpenses.length === 0) {
+    if (!csvText || !csvText.trim()) {
+      return { success: false, data: null, error: 'Empty CSV file.' };
+    }
+
+    const cleanText = csvText.replace(/^\uFEFF/, '');
+    const lines = cleanText.split(/\r?\n/).map(l => l.trim());
+
+    let expenses: Expense[] = [];
+    let memberBankAmounts: Record<FamilyMember, MemberBankAmount> = {};
+    let emis: EmiPlan[] = [];
+    let sips: SipPlan[] = [];
+    let debts: DebtRecord[] = [];
+    let monthlyBudget: number | undefined = undefined;
+    let adminPin: string | undefined = undefined;
+    let memberConfigs: Record<string, MemberCustomConfig> = {};
+    let familyMembers: string[] = [];
+
+    // Separate text into section blocks
+    let currentSection = '';
+    const sectionLines: Record<string, string[]> = {};
+
+    for (const line of lines) {
+      if (!line) continue;
+      if (line.includes('--- APP FULL BACKUP METADATA ---')) {
+        currentSection = 'metadata';
+        continue;
+      } else if (line.includes('--- EXPENSES REGISTER ---') || line.includes('--- MEMBER EXPENSE TRANSACTIONS ---')) {
+        currentSection = 'expenses';
+        continue;
+      } else if (line.includes('--- MEMBER SPENDING & SETTLEMENT BREAKDOWN ---')) {
+        currentSection = 'breakdown';
+        continue;
+      } else if (line.includes('--- MEMBER BANK BALANCES ---')) {
+        currentSection = 'bank';
+        continue;
+      } else if (line.includes('--- EMI PLANS ---') || line.includes('--- MEMBER EMI PLANS ---')) {
+        currentSection = 'emis';
+        continue;
+      } else if (line.includes('--- SIP PLANS ---')) {
+        currentSection = 'sips';
+        continue;
+      } else if (line.includes('--- DEBT RECORDS ---')) {
+        currentSection = 'debts';
+        continue;
+      } else if (line.includes('--- MEMBER CONFIGURATIONS ---')) {
+        currentSection = 'configs';
+        continue;
+      }
+
+      if (!currentSection) {
+        currentSection = 'expenses';
+      }
+
+      if (!sectionLines[currentSection]) {
+        sectionLines[currentSection] = [];
+      }
+      sectionLines[currentSection].push(line);
+    }
+
+    // 1. Parse Metadata
+    if (sectionLines['metadata'] && sectionLines['metadata'].length >= 2) {
+      for (let i = 1; i < sectionLines['metadata'].length; i++) {
+        const cols = parseCSVLine(sectionLines['metadata'][i]);
+        if (cols.length >= 4) {
+          if (cols[3]) {
+            const b = parseFloat(cols[3].replace(/[^0-9.]/g, ''));
+            if (!isNaN(b)) monthlyBudget = b;
+          }
+          if (cols[4]) adminPin = cols[4];
+        }
+      }
+    }
+
+    // 2. Parse Expenses
+    if (sectionLines['expenses'] && sectionLines['expenses'].length > 0) {
+      const expText = sectionLines['expenses'].join('\n');
+      const { validExpenses } = parseExpensesCSV(expText);
+      expenses = validExpenses as Expense[];
+    }
+
+    // 3. Parse Member Bank Balances
+    if (sectionLines['bank'] && sectionLines['bank'].length >= 2) {
+      for (let i = 1; i < sectionLines['bank'].length; i++) {
+        const cols = parseCSVLine(sectionLines['bank'][i]);
+        if (cols[0] && cols[0] !== 'Member' && cols[0] !== 'Family Member') {
+          const mName = cols[0];
+          const pAmt = parseFloat(cols[1]?.replace(/[^0-9.]/g, '') || '0') || 0;
+          const statusRaw = cols[4]?.toLowerCase() || '';
+          const finalStatus: 'pending' | 'received' | 'partially_settled' =
+            (statusRaw === 'settled' || statusRaw === 'received') ? 'received' : 'pending';
+
+          memberBankAmounts[mName] = {
+            id: `bank_${mName}_${Date.now()}`,
+            member: mName,
+            pendingBankAmount: pAmt,
+            bankName: cols[2] || 'Default Bank',
+            upiId: cols[3] || '',
+            status: finalStatus,
+            lastUpdated: cols[5] || new Date().toISOString(),
+            notes: cols[6] || ''
+          };
+        }
+      }
+    }
+
+    // Fallback: Parse Breakdown section if Member Bank Balances section not present
+    if (sectionLines['breakdown'] && sectionLines['breakdown'].length >= 2) {
+      for (let i = 1; i < sectionLines['breakdown'].length; i++) {
+        const cols = parseCSVLine(sectionLines['breakdown'][i]);
+        if (cols[0] && cols[0] !== 'Member Name') {
+          const mName = cols[0];
+          if (!memberBankAmounts[mName]) {
+            const pAmt = parseFloat(cols[3]?.replace(/[^0-9.]/g, '') || '0') || 0;
+            const statusRaw = cols[4]?.toLowerCase() || '';
+            const finalStatus = (statusRaw === 'settled' || statusRaw === 'received') ? 'received' : 'pending';
+
+            memberBankAmounts[mName] = {
+              id: `bank_${mName}_${Date.now()}`,
+              member: mName,
+              pendingBankAmount: pAmt,
+              bankName: cols[5] || 'Default Bank',
+              upiId: cols[6] || '',
+              status: finalStatus,
+              lastUpdated: new Date().toISOString(),
+              notes: 'Restored from CSV breakdown'
+            };
+          }
+        }
+      }
+    }
+
+    // 4. Parse EMI Plans
+    if (sectionLines['emis'] && sectionLines['emis'].length >= 2) {
+      for (let i = 1; i < sectionLines['emis'].length; i++) {
+        const cols = parseCSVLine(sectionLines['emis'][i]);
+        if (cols.length >= 2 && cols[0] !== 'ID' && cols[1] !== 'Title') {
+          const emiAmt = parseFloat(cols[5]?.replace(/[^0-9.]/g, '') || '0') || 1000;
+          const totAmt = parseFloat(cols[4]?.replace(/[^0-9.]/g, '') || '0') || (emiAmt * 12);
+          const tenure = parseInt(cols[6]?.replace(/[^0-9]/g, '') || '12', 10) || 12;
+          const paidM = parseInt(cols[7]?.replace(/[^0-9]/g, '') || '0', 10) || 0;
+
+          emis.push({
+            id: cols[0] || `emi_csv_${Date.now()}_${i}`,
+            title: cols[1] || 'Restored EMI',
+            paidBy: cols[2] || FAMILY_MEMBERS[0],
+            category: (cols[3] || 'EMI') as CategoryId,
+            totalAmount: totAmt,
+            emiAmount: emiAmt,
+            tenureMonths: tenure,
+            paidMonths: paidM,
+            status: (cols[8]?.toLowerCase() === 'completed' ? 'completed' : 'active') as 'active' | 'completed',
+            startMonth: cols[9] || new Date().toISOString().slice(0, 7)
+          });
+        }
+      }
+    }
+
+    // 5. Parse SIP Plans
+    if (sectionLines['sips'] && sectionLines['sips'].length >= 2) {
+      for (let i = 1; i < sectionLines['sips'].length; i++) {
+        const cols = parseCSVLine(sectionLines['sips'][i]);
+        if (cols.length >= 2 && cols[0] !== 'ID' && cols[1] !== 'Title') {
+          const monthlyAmt = parseFloat(cols[3]?.replace(/[^0-9.]/g, '') || '0') || 1000;
+          const completedM = parseInt(cols[5]?.replace(/[^0-9]/g, '') || '0', 10) || 0;
+
+          sips.push({
+            id: cols[0] || `sip_csv_${Date.now()}_${i}`,
+            title: cols[1] || 'Restored SIP',
+            paidBy: cols[2] || FAMILY_MEMBERS[0],
+            monthlyAmount: monthlyAmt,
+            expectedRateOfReturn: 12,
+            tenureYears: 10,
+            fundCategory: cols[4] || 'Mutual Fund',
+            completedMonths: completedM,
+            status: (cols[6]?.toLowerCase() === 'completed' ? 'completed' : cols[6]?.toLowerCase() === 'paused' ? 'paused' : 'active') as any,
+            startMonth: cols[7] || new Date().toISOString().slice(0, 7)
+          });
+        }
+      }
+    }
+
+    // 6. Parse Debt Records
+    if (sectionLines['debts'] && sectionLines['debts'].length >= 2) {
+      for (let i = 1; i < sectionLines['debts'].length; i++) {
+        const cols = parseCSVLine(sectionLines['debts'][i]);
+        if (cols.length >= 2 && cols[0] !== 'ID' && cols[1] !== 'Title') {
+          const totAmt = parseFloat(cols[4]?.replace(/[^0-9.]/g, '') || '0') || 5000;
+          const remAmt = parseFloat(cols[5]?.replace(/[^0-9.]/g, '') || '0') ?? totAmt;
+          const type = cols[3]?.toLowerCase() === 'given' ? 'given' : 'borrowed';
+
+          debts.push({
+            id: cols[0] || `debt_csv_${Date.now()}_${i}`,
+            title: cols[1] || 'Restored Debt',
+            personName: cols[2] || 'Person',
+            type: type,
+            totalAmount: totAmt,
+            remainingAmount: remAmt,
+            paidBy: FAMILY_MEMBERS[0],
+            dueDate: cols[7] || new Date().toISOString().split('T')[0],
+            status: (cols[6]?.toLowerCase() === 'settled' ? 'settled' : 'active') as any,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+
+    // 7. Parse Member Configs
+    if (sectionLines['configs'] && sectionLines['configs'].length >= 2) {
+      for (let i = 1; i < sectionLines['configs'].length; i++) {
+        const cols = parseCSVLine(sectionLines['configs'][i]);
+        if (cols[0] && cols[0] !== 'Member Name') {
+          const mName = cols[0];
+          memberConfigs[mName] = {
+            name: mName,
+            emoji: cols[1] || '👤',
+            color: cols[2] || 'indigo',
+            photoUrl: cols[3] || undefined
+          };
+          if (!familyMembers.includes(mName)) {
+            familyMembers.push(mName);
+          }
+        }
+      }
+    }
+
+    // Fallback: If no section headers were found or only plain expenses were parsed
+    if (expenses.length === 0 && Object.keys(memberBankAmounts).length === 0 && emis.length === 0 && sips.length === 0 && debts.length === 0 && !monthlyBudget && !adminPin) {
+      const { validExpenses, errors } = parseExpensesCSV(csvText);
+      if (validExpenses.length > 0) {
+        return {
+          success: true,
+          data: { expenses: validExpenses as Expense[] },
+          error: null
+        };
+      }
       return {
         success: false,
         data: null,
-        error: errors.length > 0 ? errors.join('; ') : 'No valid records could be extracted from CSV file.'
+        error: errors.length > 0 ? errors.join('; ') : 'No valid expense records or backup data found in CSV.'
       };
     }
 
     return {
       success: true,
       data: {
-        expenses: validExpenses as Expense[],
+        expenses,
+        memberBankAmounts: Object.keys(memberBankAmounts).length > 0 ? memberBankAmounts : undefined,
+        emis: emis.length > 0 ? emis : undefined,
+        sips: sips.length > 0 ? sips : undefined,
+        debts: debts.length > 0 ? debts : undefined,
+        monthlyBudget,
+        adminPin,
+        familyMembers: familyMembers.length > 0 ? familyMembers : undefined,
+        memberConfigs: Object.keys(memberConfigs).length > 0 ? memberConfigs : undefined
       },
       error: null
     };
@@ -1471,6 +1870,39 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
     const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
     const pdfDoc = await loadingTask.promise;
 
+    // 1. First Priority: Check PDF metadata properties for embedded JSON/Base64 backup payload
+    try {
+      const metadata = await pdfDoc.getMetadata();
+      const metaInfo = (metadata?.info || {}) as any;
+      const candidateStr = metaInfo.Keywords || metaInfo.keywords || metaInfo.Subject || metaInfo.subject;
+
+      if (candidateStr && typeof candidateStr === 'string' && candidateStr.length > 20) {
+        try {
+          const cleanB64 = candidateStr.replace(/\s+/g, '');
+          const decodedJsonStr = decodeURIComponent(escape(atob(cleanB64)));
+          const parsed = JSON.parse(decodedJsonStr);
+          const result = parseBackupJSON(JSON.stringify(parsed));
+          if (result.success && result.data) {
+            console.log('[PDF Restore] Successfully restored full app backup payload from PDF metadata!');
+            return result;
+          }
+        } catch (e) {
+          // Attempt direct JSON parse if not base64
+          try {
+            const parsed = JSON.parse(candidateStr);
+            const result = parseBackupJSON(JSON.stringify(parsed));
+            if (result.success && result.data) {
+              return result;
+            }
+          } catch (err) {
+            console.warn('PDF metadata payload decode attempted but failed:', err);
+          }
+        }
+      }
+    } catch (mErr) {
+      console.warn('Could not read PDF metadata info:', mErr);
+    }
+
     let fullText = '';
     const allLines: string[] = [];
 
@@ -1507,26 +1939,27 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
       }
     }
 
-    // 1. Check for Base64 embedded payload markers
-    const startIdx = fullText.indexOf('===FULL_BACKUP_DATA_START===');
-    const endIdx = fullText.indexOf('===FULL_BACKUP_DATA_END===');
+    // 2. Second Priority: Check for Base64 embedded payload in page text using flexible regex
+    const base64Regex = /===+\s*FULL_BACKUP_DATA_START\s*===+([\s\S]*?)===+\s*FULL_BACKUP_DATA_END\s*===+/i;
+    const b64Match = fullText.match(base64Regex);
 
-    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      const rawSegment = fullText.substring(startIdx + '===FULL_BACKUP_DATA_START==='.length, endIdx);
-      const cleanBase64 = rawSegment.replace(/\s+/g, '');
+    if (b64Match && b64Match[1]) {
+      const rawSegment = b64Match[1];
+      const cleanBase64 = rawSegment.replace(/[^A-Za-z0-9+/=]/g, '');
       try {
         const decodedJsonStr = decodeURIComponent(escape(atob(cleanBase64)));
         const parsed = JSON.parse(decodedJsonStr);
         const result = parseBackupJSON(JSON.stringify(parsed));
         if (result.success && result.data) {
+          console.log('[PDF Restore] Successfully restored full app backup payload from text page Base64 block!');
           return result;
         }
       } catch (err) {
-        console.warn('Failed to decode Base64 backup payload from PDF:', err);
+        console.warn('Failed to decode Base64 backup payload from text page:', err);
       }
     }
 
-    // 2. Check for legacy raw JSON embedded payload
+    // 3. Third Priority: Check for legacy raw JSON embedded payload in text
     const legacyMatch = fullText.match(/---\s*BACKUP_DATA_START\s*---\s*(\{[\s\S]*?\})\s*---\s*BACKUP_DATA_END\s*---/i) ||
                         fullText.match(/(\{[\s\S]*?"expenses"\s*:[\s\S]*?\})/);
 
@@ -1542,15 +1975,168 @@ export const parseBackupPDF = async (fileBuffer: ArrayBuffer): Promise<{
       }
     }
 
-    // 3. Fallback: Parse expenses from text lines
+    // 4. Fourth Priority: Multi-section visual table fallback parser (Expenses, Bank Dues, EMIs, SIPs, Debts)
     const { validExpenses, errors } = parseExpensesFromTextLines(allLines);
-    if (validExpenses.length > 0) {
+
+    let parsedBankAmounts: Record<string, MemberBankAmount> | undefined = undefined;
+    let parsedEmis: EmiPlan[] | undefined = undefined;
+    let parsedSips: SipPlan[] | undefined = undefined;
+    let parsedDebts: DebtRecord[] | undefined = undefined;
+
+    let currentSection = 'expenses';
+    const sectionTextLines: Record<string, string[]> = { expenses: [], bank: [], emis: [], sips: [], debts: [] };
+
+    for (const line of allLines) {
+      if (/2\.\s*Member Spending & Bank Settlement|2\.\s*Member Bank Accounts|Member Bank Accounts & Dues/i.test(line)) {
+        currentSection = 'bank';
+        continue;
+      } else if (/3\.\s*Active EMI Plans|3\.\s*EMI Plans/i.test(line)) {
+        currentSection = 'emis';
+        continue;
+      } else if (/4\.\s*Active SIP Investments|4\.\s*SIP Investments/i.test(line)) {
+        currentSection = 'sips';
+        continue;
+      } else if (/5\.\s*Debt & Loan Records|5\.\s*Debt Records/i.test(line)) {
+        currentSection = 'debts';
+        continue;
+      }
+      sectionTextLines[currentSection].push(line);
+    }
+
+    // Parse Bank Dues & Settlement Status
+    if (sectionTextLines.bank.length > 0) {
+      const bankMap: Record<string, MemberBankAmount> = {};
+      for (const bLine of sectionTextLines.bank) {
+        if (/Pending Bank Due|Member Name|Bank & UPI Details/i.test(bLine)) continue;
+        const matchedMember = FAMILY_MEMBERS.find(m => bLine.toLowerCase().includes(m.toLowerCase()));
+        if (matchedMember) {
+          const numbers = bLine.match(/(?:Rs\.?|₹)?\s*([0-9,]+(?:\.[0-9]+)?)/gi);
+          let amt = 0;
+          if (numbers && numbers.length > 0) {
+            const rawAmounts = numbers.map(n => parseFloat(n.replace(/[^0-9.]/g, ''))).filter(n => !isNaN(n));
+            // The last amount or amount near 'Pending' is usually pendingBankAmount
+            amt = rawAmounts[rawAmounts.length - 1] || 0;
+          }
+
+          const isSettled = /SETTLED|RECEIVED|PAID/i.test(bLine);
+          const isPending = /PENDING/i.test(bLine);
+          const finalStatus: 'received' | 'pending' = isSettled ? 'received' : (isPending ? 'pending' : (amt > 0 ? 'pending' : 'received'));
+
+          // Extract potential bank name
+          let bankName = 'Default Bank';
+          if (/SBI|HDFC|ICICI|PNB|AXIS|BOB|KOTAK|PAYTM|GPAY|UPI/i.test(bLine)) {
+            const bMatch = bLine.match(/(SBI|HDFC|ICICI|PNB|AXIS|BOB|KOTAK|PAYTM|GPAY|UPI)\s*(?:Bank|Transfer)?/i);
+            if (bMatch) bankName = bMatch[0];
+          }
+
+          bankMap[matchedMember] = {
+            id: `bank_${matchedMember}_${Date.now()}`,
+            member: matchedMember,
+            pendingBankAmount: amt,
+            bankName: bankName,
+            upiId: '',
+            status: finalStatus,
+            lastUpdated: new Date().toISOString(),
+            notes: 'Restored from PDF'
+          };
+        }
+      }
+      if (Object.keys(bankMap).length > 0) parsedBankAmounts = bankMap;
+    }
+
+    // Parse EMIs
+    if (sectionTextLines.emis.length > 0) {
+      const emiList: EmiPlan[] = [];
+      for (const eLine of sectionTextLines.emis) {
+        if (/Monthly EMI|Tenure|Total Cost/i.test(eLine)) continue;
+        const numbers = eLine.match(/[0-9,]+/g);
+        if (numbers && numbers.length >= 2) {
+          const matchedMember = FAMILY_MEMBERS.find(m => eLine.toLowerCase().includes(m.toLowerCase())) || FAMILY_MEMBERS[0];
+          const amts = numbers.map(n => parseFloat(n.replace(/,/g, ''))).filter(n => n > 100);
+          if (amts.length > 0) {
+            emiList.push({
+              id: `emi_pdf_${Date.now()}_${emiList.length}`,
+              title: eLine.split(/\s{2,}/)[1] || 'Restored EMI',
+              paidBy: matchedMember,
+              category: 'EMI',
+              emiAmount: amts[0] || 1000,
+              tenureMonths: 12,
+              paidMonths: 1,
+              startMonth: new Date().toISOString().slice(0, 7),
+              status: 'active',
+              totalAmount: amts[1] || (amts[0] * 12) || 12000
+            });
+          }
+        }
+      }
+      if (emiList.length > 0) parsedEmis = emiList;
+    }
+
+    // Parse SIPs
+    if (sectionTextLines.sips.length > 0) {
+      const sipList: SipPlan[] = [];
+      for (const sLine of sectionTextLines.sips) {
+        if (/Monthly SIP|Fund Title/i.test(sLine)) continue;
+        const numbers = sLine.match(/[0-9,]+/g);
+        if (numbers && numbers.length >= 1) {
+          const matchedMember = FAMILY_MEMBERS.find(m => sLine.toLowerCase().includes(m.toLowerCase())) || FAMILY_MEMBERS[0];
+          const amts = numbers.map(n => parseFloat(n.replace(/,/g, ''))).filter(n => n >= 100);
+          if (amts.length > 0) {
+            sipList.push({
+              id: `sip_pdf_${Date.now()}_${sipList.length}`,
+              title: sLine.split(/\s{2,}/)[1] || 'Restored SIP',
+              paidBy: matchedMember,
+              monthlyAmount: amts[0] || 1000,
+              expectedRateOfReturn: 12,
+              tenureYears: 10,
+              startMonth: new Date().toISOString().slice(0, 7),
+              completedMonths: 1,
+              status: 'active',
+              fundCategory: 'Mutual Fund'
+            });
+          }
+        }
+      }
+      if (sipList.length > 0) parsedSips = sipList;
+    }
+
+    // Parse Debts
+    if (sectionTextLines.debts.length > 0) {
+      const debtList: DebtRecord[] = [];
+      for (const dLine of sectionTextLines.debts) {
+        if (/Total Debt|Remaining|Person \/ Bank/i.test(dLine)) continue;
+        const numbers = dLine.match(/[0-9,]+/g);
+        if (numbers && numbers.length >= 1) {
+          const matchedMember = FAMILY_MEMBERS.find(m => dLine.toLowerCase().includes(m.toLowerCase())) || FAMILY_MEMBERS[0];
+          const amts = numbers.map(n => parseFloat(n.replace(/,/g, ''))).filter(n => n >= 100);
+          if (amts.length > 0) {
+            debtList.push({
+              id: `debt_pdf_${Date.now()}_${debtList.length}`,
+              title: dLine.split(/\s{2,}/)[1] || 'Restored Loan',
+              personName: 'Bank / Person',
+              type: dLine.toLowerCase().includes('given') ? 'given' : 'borrowed',
+              totalAmount: amts[0] || 5000,
+              remainingAmount: amts[1] || amts[0] || 5000,
+              paidBy: matchedMember,
+              dueDate: new Date().toISOString().split('T')[0],
+              status: 'active',
+              createdAt: new Date().toISOString()
+            });
+          }
+        }
+      }
+      if (debtList.length > 0) parsedDebts = debtList;
+    }
+
+    if (validExpenses.length > 0 || parsedBankAmounts || parsedEmis || parsedSips || parsedDebts) {
       return {
         success: true,
         data: {
           expenses: validExpenses as Expense[],
-          memberBankAmounts: undefined,
-          emis: undefined,
+          memberBankAmounts: parsedBankAmounts,
+          emis: parsedEmis,
+          sips: parsedSips,
+          debts: parsedDebts,
           monthlyBudget: undefined
         },
         error: errors.length > 0 ? errors.join(', ') : null
