@@ -598,8 +598,10 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                     <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Expenses</span>
                   </div>
                   <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="block text-lg font-bold text-emerald-600 dark:text-emerald-400">{Object.keys(memberBankAmounts).length}</span>
-                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Bank Dues</span>
+                    <span className="block text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                      {familyMembers.filter(m => memberBankAmounts[m]).length}
+                    </span>
+                    <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Bank Accounts</span>
                   </div>
                   <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="block text-lg font-bold text-amber-600 dark:text-amber-400">{emis.length + sips.length}</span>
@@ -750,7 +752,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                 const monthExpList = (parsedBackupData.expenses || []).filter(e => (e.date || '').startsWith(curMonthKey));
                 const monthSpentAmt = monthExpList.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
-                const bankList = (Object.values(parsedBackupData.memberBankAmounts || {}) as MemberBankAmount[]);
+                const parsedMembersList = parsedBackupData.familyMembers && parsedBackupData.familyMembers.length > 0
+                  ? parsedBackupData.familyMembers
+                  : familyMembers;
+                const bankList = (Object.values(parsedBackupData.memberBankAmounts || {}) as MemberBankAmount[]).filter(
+                  b => !parsedMembersList || parsedMembersList.length === 0 || parsedMembersList.includes(b.member)
+                );
                 const settledBankCount = bankList.filter(b => b.status === 'received' || (b.status as string) === 'settled').length;
                 const pendingBankCount = bankList.filter(b => b.status === 'pending' || (b.pendingBankAmount && b.pendingBankAmount > 0)).length;
 
