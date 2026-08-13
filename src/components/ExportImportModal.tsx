@@ -12,7 +12,8 @@ import {
   RotateCcw,
   ShieldAlert,
   FileCheck,
-  Layers
+  Layers,
+  Calendar
 } from 'lucide-react';
 import { Expense, FamilyMember, MemberBankAmount, EmiPlan, SipPlan, DebtRecord, FAMILY_MEMBERS, ADMIN_MEMBER, MemberCustomConfig } from '../types';
 import {
@@ -584,6 +585,38 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
           {/* TAB 1: UNIFIED EXPORT OPTION */}
           {activeTab === 'export' && (
             <div className="space-y-6 animate-fade-in">
+              {/* Automated 7-Day Weekly Backup Banner */}
+              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${isDark ? 'bg-emerald-950/30 border-emerald-800/80' : 'bg-emerald-50/80 border-emerald-200'}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`p-2.5 rounded-xl shrink-0 ${isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                        {language === 'hi' ? 'ऑटोमेटेड 7-दिवसीय वीकली बैकअप (Weekly Auto-Backup)' : 'Automated 7-Day Weekly Backup'}
+                      </h4>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                        Active
+                      </span>
+                    </div>
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'} mt-0.5`}>
+                      {language === 'hi'
+                        ? 'ऐप हर 7 दिन में स्वतः आपकी सभी खर्चों व बैंक बैलेंस का सुरक्षित PDF बैकअप जनरेट करता है।'
+                        : 'App automatically creates a complete 7-day weekly PDF backup of all expenses and balances.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleExportPDF}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{language === 'hi' ? 'अभी वीकली PDF लें' : 'Download Weekly PDF'}</span>
+                </button>
+              </div>
+
               <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
                 <h3 className="text-sm font-bold flex items-center gap-2 text-indigo-600 dark:text-indigo-400 mb-2">
                   <Layers className="w-4 h-4" /> Full App Backup Payload Summary

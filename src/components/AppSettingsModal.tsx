@@ -30,6 +30,7 @@ import {
   Crown,
   TrendingUp,
   Coins,
+  Calendar,
 } from 'lucide-react';
 import { FamilyMember, MemberCustomConfig } from '../types';
 import { Language, LANGUAGE_OPTIONS, t } from '../utils/translations';
@@ -66,6 +67,7 @@ interface AppSettingsModalProps {
   onOpenChangePinModal?: () => void;
   onOpenExportImport?: () => void;
   onOpenPdfSummary?: () => void;
+  onRunWeeklyBackup?: () => void;
   onOpenWebLinkModal?: () => void;
   brandingSettings: AppBrandingSettings;
   onUpdateBrandingSettings: (updated: AppBrandingSettings) => void;
@@ -160,6 +162,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   onOpenChangePinModal,
   onOpenExportImport,
   onOpenPdfSummary,
+  onRunWeeklyBackup,
   onOpenWebLinkModal,
   brandingSettings,
   onUpdateBrandingSettings,
@@ -878,6 +881,46 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Automated 7-Day Weekly Backup Card */}
+                <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30 flex items-center justify-between sm:col-span-2">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-slate-900 dark:text-white">
+                          {language === 'hi' ? 'ऑटोमेटेड 7-दिवसीय वीकली बैकअप (Weekly Auto-Backup)' : 'Automated 7-Day Weekly Backup'}
+                        </span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                          Active (7 Days)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {language === 'hi'
+                          ? 'हर 7 दिन में स्वतः आपकी पूरी वित्तीय रिपोर्ट का सुरक्षित PDF बैकअप जनरेट होता है।'
+                          : 'Automatically generates and saves a full PDF backup every 7 days.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      if (onRunWeeklyBackup) {
+                        onRunWeeklyBackup();
+                      } else if (onOpenPdfSummary) {
+                        onOpenPdfSummary();
+                      }
+                    }}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{language === 'hi' ? 'अभी वीकली बैकअप लें' : 'Run Weekly Backup'}</span>
+                  </button>
+                </div>
+
                 {/* Export & Import Modal */}
                 {onOpenExportImport && (
                   <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
@@ -912,7 +955,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                         Monthly PDF Summary
                       </span>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Print / Download PDF report
+                        Download / Print PDF report
                       </span>
                     </div>
 
@@ -925,10 +968,12 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                       className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1"
                     >
                       <FileText className="w-3.5 h-3.5" />
-                      <span>PDF</span>
+                      <span>Download PDF</span>
                     </button>
                   </div>
                 )}
+
+                {/* Share App Link & QR */}
 
                 {/* Share App Link & QR */}
                 {onOpenWebLinkModal && (
