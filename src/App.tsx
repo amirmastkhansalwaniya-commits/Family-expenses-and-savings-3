@@ -180,15 +180,6 @@ const DEFAULT_MEMBER_BANK_AMOUNTS: Record<FamilyMember, Omit<MemberBankAmount, '
     status: 'received',
     lastUpdated: '2026-08-01',
   },
-  'Amir Khan': {
-    member: 'Amir Khan',
-    pendingBankAmount: 0,
-    bankName: 'SBI Bank',
-    upiId: 'amir@okicici',
-    notes: 'Bank balance settled',
-    status: 'received',
-    lastUpdated: '2026-08-01',
-  },
   'Angrej Singh': {
     member: 'Angrej Singh',
     pendingBankAmount: 0,
@@ -2423,8 +2414,41 @@ export default function App() {
         onOpenChangePinModal={handleOpenChangePinModal}
         onOpenExportImport={() => setIsExportImportModalOpen(true)}
         onOpenPdfSummary={() => {
-          setActiveTab('dashboard');
-          setIsPdfModalOpen(true);
+          try {
+            exportBackupPDF({
+              expenses,
+              memberBankAmounts,
+              emis,
+              sips,
+              debts,
+              monthlyBudget,
+              adminPin,
+              familyMembers,
+              memberConfigs
+            });
+          } catch (e) {
+            console.error('PDF generation error:', e);
+          }
+          setIsExportImportModalOpen(true);
+        }}
+        onRunWeeklyBackup={() => {
+          try {
+            exportBackupPDF({
+              expenses,
+              memberBankAmounts,
+              emis,
+              sips,
+              debts,
+              monthlyBudget,
+              adminPin,
+              familyMembers,
+              memberConfigs
+            });
+            localStorage.setItem('auto_weekly_pdf_backup_last_time', String(Date.now()));
+          } catch (e) {
+            console.error('Weekly PDF backup error:', e);
+          }
+          setIsExportImportModalOpen(true);
         }}
         onOpenWebLinkModal={() => setIsWebAppLinkModalOpen(true)}
         brandingSettings={brandingSettings}
