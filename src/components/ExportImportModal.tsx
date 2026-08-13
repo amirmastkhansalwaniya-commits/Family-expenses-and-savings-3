@@ -21,6 +21,7 @@ import {
   parseBackupJSON,
   parseBackupPDF,
   parseExpensesCSV,
+  parseBackupCSV,
   FullBackupData
 } from '../utils/exportImport';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -80,6 +81,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   const [parsedBackupData, setParsedBackupData] = useState<FullBackupData | null>(null);
   const [parsedExpensesCount, setParsedExpensesCount] = useState<number>(0);
   const [isReadingFile, setIsReadingFile] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
   const [importErrorMsg, setImportErrorMsg] = useState<string | null>(null);
@@ -138,11 +140,8 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
     return clean;
   };
 
-  // File Select Handler for Unified Import (CSV or PDF)
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Process uploaded file (supports CSV, PDF, JSON, TXT, TSV, or any text file)
+  const processFile = (file: File) => {
     setImportFile(file);
     setImportSuccessMsg(null);
     setImportErrorMsg(null);
@@ -151,8 +150,9 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
     setIsReadingFile(true);
 
     const fileNameLower = file.name.toLowerCase();
+    const mimeType = (file.type || '').toLowerCase();
 
-    if (fileNameLower.endsWith('.pdf')) {
+    if (fileNameLower.endsWith('.pdf') || mimeType === 'application/pdf') {
       setImportFileType('pdf');
       const reader = new FileReader();
       reader.onload = async (event) => {
@@ -178,41 +178,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         setIsReadingFile(false);
       };
       reader.readAsArrayBuffer(file);
-    } else if (fileNameLower.endsWith('.csv')) {
-      setImportFileType('csv');
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        if (text) {
-          try {
-            const { validExpenses, errors } = parseExpensesCSV(text);
-            if (validExpenses.length > 0) {
-              setParsedBackupData({
-                expenses: validExpenses as Expense[],
-                monthlyBudget,
-                adminPin,
-                familyMembers
-              });
-              setParsedExpensesCount(validExpenses.length);
-              if (errors.length > 0) {
-                console.warn('[CSV Parse Warnings]:', errors);
-              }
-            } else {
-              setImportErrorMsg(errors.length > 0 ? errors.join(', ') : 'No valid expenses found in CSV.');
-            }
-          } catch (err: any) {
-            setImportErrorMsg(`Error parsing CSV: ${err?.message || 'Invalid CSV format'}`);
-          } finally {
-            setIsReadingFile(false);
-          }
-        }
-      };
-      reader.onerror = () => {
-        setImportErrorMsg('Failed to read CSV file.');
-        setIsReadingFile(false);
-      };
-      reader.readAsText(file);
-    } else if (fileNameLower.endsWith('.json')) {
+    } else if (fileNameLower.endsWith('.json') || mimeType === 'application/json') {
       setImportFileType('json');
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -237,10 +203,89 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         setImportErrorMsg('Failed to read JSON file.');
         setIsReadingFile(false);
       };
-      reader.readAsText(file);
+      reader.readAsText(file, 'UTF-8');
     } else {
-      setImportErrorMsg('Unsupported file format. Please select a CSV or PDF full backup file.');
-      setIsReadingFile(false);
+      // Default to CSV / Text file parser for all .csv, .txt, .tsv, or unknown file types
+      setImportFileType('csv');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (text) {
+          try {
+            // First attempt: parse as multi-section full app backup CSV
+            const csvResult = parseBackupCSV(text);
+            if (
+              csvResult.success &&
+              csvResult.data &&
+              ((csvResult.data.expenses && csvResult.data.expenses.length > 0) ||
+                csvResult.data.memberBankAmounts ||
+                csvResult.data.emis ||
+                csvResult.data.sips ||
+                csvResult.data.debts)
+            ) {
+              setParsedBackupData(csvResult.data);
+              setParsedExpensesCount((csvResult.data.expenses || []).length);
+            } else {
+              // Second attempt: parse as plain expenses CSV
+              const { validExpenses, errors } = parseExpensesCSV(text);
+              if (validExpenses.length > 0) {
+                setParsedBackupData({
+                  expenses: validExpenses as Expense[],
+                  monthlyBudget,
+                  adminPin,
+                  familyMembers,
+                  memberConfigs
+                });
+                setParsedExpensesCount(validExpenses.length);
+              } else {
+                setImportErrorMsg(errors.length > 0 ? errors.join(', ') : 'No valid expense records found in CSV file.');
+              }
+            }
+          } catch (err: any) {
+            setImportErrorMsg(`Error parsing CSV file: ${err?.message || 'Invalid format'}`);
+          } finally {
+            setIsReadingFile(false);
+          }
+        } else {
+          setImportErrorMsg('Selected file appears to be empty.');
+          setIsReadingFile(false);
+        }
+      };
+      reader.onerror = () => {
+        setImportErrorMsg('Failed to read CSV/Text file.');
+        setIsReadingFile(false);
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+    e.target.value = ''; // Reset input value so re-selecting same file works
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFile(files[0]);
     }
   };
 
@@ -368,6 +413,21 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
           await setDoc(membersListRef, { members: parsedBackupData.familyMembers, updatedAt: new Date().toISOString() }, { merge: true });
         } catch (e) {
           console.warn('Firestore setDoc skipped for familyMembersConfig:', e);
+        }
+      }
+
+      // 9. Restore Member Configurations (Admin & Family Member profiles, photos, colors)
+      if (parsedBackupData.memberConfigs && typeof parsedBackupData.memberConfigs === 'object') {
+        localStorage.setItem('family_member_configs', JSON.stringify(parsedBackupData.memberConfigs));
+        for (const [mName, mCfg] of Object.entries(parsedBackupData.memberConfigs)) {
+          if (mName && mCfg) {
+            const mDocRef = doc(db, 'memberConfigs', mName);
+            try {
+              await setDoc(mDocRef, sanitizeForFirestore(mCfg), { merge: true });
+            } catch (e) {
+              console.warn(`Firestore setDoc skipped for memberConfig ${mName}:`, e);
+            }
+          }
         }
       }
 
@@ -636,13 +696,18 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
-                  accept=".csv,.pdf,.json"
+                  accept=".csv,.pdf,.json,.txt,.tsv,text/csv,text/plain,application/pdf,application/json"
                   className="hidden"
                 />
                 <div
                   onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
                   className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
-                    importFile
+                    isDragging
+                      ? 'border-indigo-500 bg-indigo-500/10 scale-[1.01]'
+                      : importFile
                       ? isDark ? 'border-emerald-500 bg-emerald-950/20' : 'border-emerald-500 bg-emerald-50'
                       : isDark ? 'border-slate-700 hover:border-indigo-500 bg-slate-800/40' : 'border-slate-300 hover:border-indigo-500 bg-slate-50'
                   }`}
@@ -657,14 +722,14 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                         File Selected: {importFile.name}
                       </p>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        ({(importFile.size / 1024).toFixed(1)} KB) • Click to change file
+                        ({(importFile.size / 1024).toFixed(1)} KB) • Click or drop to change file
                       </p>
                     </div>
                   ) : (
                     <div>
-                      <p className="font-bold text-sm mb-1">Click to select CSV or PDF backup file</p>
+                      <p className="font-bold text-sm mb-1">Click or drag & drop CSV or PDF backup file here</p>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Supports <strong>.csv</strong> or <strong>.pdf</strong> full app backups
+                        Supports <strong>.csv</strong>, <strong>.txt</strong>, or <strong>.pdf</strong> app backups
                       </p>
                     </div>
                   )}
@@ -679,35 +744,67 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                 </div>
               )}
 
-              {parsedBackupData && !isReadingFile && (
-                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-emerald-50/60 border-emerald-200'}`}>
-                  <div className="flex items-center gap-2 mb-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs">
-                    <CheckCircle2 className="w-4 h-4" /> Backup File Ready for Import
-                  </div>
-                  <p className={`text-xs mb-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                    Parsed <strong>{parsedExpensesCount}</strong> expense records
-                    {parsedBackupData.emis ? `, ${parsedBackupData.emis.length} EMI plans` : ''}
-                    {parsedBackupData.sips ? `, ${parsedBackupData.sips.length} SIP plans` : ''}
-                    {parsedBackupData.debts ? `, ${parsedBackupData.debts.length} debt records` : ''}.
-                  </p>
+              {parsedBackupData && !isReadingFile && (() => {
+                const totalSpentAll = (parsedBackupData.expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+                const curMonthKey = selectedMonth || new Date().toISOString().slice(0, 7);
+                const monthExpList = (parsedBackupData.expenses || []).filter(e => (e.date || '').startsWith(curMonthKey));
+                const monthSpentAmt = monthExpList.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
-                  <button
-                    onClick={handleConfirmImport}
-                    disabled={isImporting}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isImporting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Restoring Application Data...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4" /> Restore Entire App Data Now
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+                const bankList = (Object.values(parsedBackupData.memberBankAmounts || {}) as MemberBankAmount[]);
+                const settledBankCount = bankList.filter(b => b.status === 'received' || (b.status as string) === 'settled').length;
+                const pendingBankCount = bankList.filter(b => b.status === 'pending' || (b.pendingBankAmount && b.pendingBankAmount > 0)).length;
+
+                return (
+                  <div className={`p-4 rounded-xl border space-y-3 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-emerald-50/60 border-emerald-200'}`}>
+                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" /> Full Backup File Parsed & Ready for Import
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">{parsedExpensesCount} Records</span>
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Total: ₹{totalSpentAll.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">This Month</span>
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">{monthExpList.length} rec (₹{monthSpentAmt.toLocaleString('en-IN')})</span>
+                      </div>
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">Bank Settle Status</span>
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{bankList.length} Members ({settledBankCount} Settled, {pendingBankCount} Pending)</span>
+                      </div>
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">EMIs & SIPs</span>
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">{parsedBackupData.emis?.length || 0} EMIs / {parsedBackupData.sips?.length || 0} SIPs</span>
+                      </div>
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">Debt Records</span>
+                        <span className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{parsedBackupData.debts?.length || 0} Active Loans</span>
+                      </div>
+                      <div className={`p-2.5 rounded-lg border ${isDark ? 'bg-slate-900/60 border-slate-750' : 'bg-white border-emerald-100'}`}>
+                        <span className="block font-bold text-slate-800 dark:text-slate-100">Profiles & Admin</span>
+                        <span className="text-[11px] text-cyan-600 dark:text-cyan-400 font-semibold">Settings Restored</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={isImporting}
+                      className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isImporting ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" /> Restoring Application Data...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" /> Restore Entire App Data Now
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Success / Error Banners */}
               {importSuccessMsg && (
