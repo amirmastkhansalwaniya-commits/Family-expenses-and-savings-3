@@ -15,6 +15,57 @@ export interface ExportPDFParams {
   language?: Language;
 }
 
+/**
+ * Helper to group an array of expenses chronologically by Month (YYYY-MM)
+ */
+export interface MonthExpenseGroup {
+  monthKey: string;
+  monthLabel: string;
+  expenses: Expense[];
+  total: number;
+}
+
+export const groupExpensesByMonth = (expenses: Expense[]): MonthExpenseGroup[] => {
+  const groups: Record<string, Expense[]> = {};
+
+  (expenses || []).forEach(exp => {
+    let mKey = 'Unknown Period';
+    if (exp.date && typeof exp.date === 'string' && exp.date.length >= 7) {
+      mKey = exp.date.substring(0, 7);
+    }
+    if (!groups[mKey]) {
+      groups[mKey] = [];
+    }
+    groups[mKey].push(exp);
+  });
+
+  const sortedMonthKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+  return sortedMonthKeys.map(monthKey => {
+    // Sort transactions inside each month descending by date
+    const monthExpenses = groups[monthKey].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const total = monthExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    let monthLabel = monthKey;
+    if (/^\d{4}-\d{2}$/.test(monthKey)) {
+      const [yearStr, monthStr] = monthKey.split('-');
+      const year = parseInt(yearStr, 10);
+      const monthIndex = parseInt(monthStr, 10) - 1;
+      const d = new Date(year, monthIndex, 1);
+      if (!isNaN(d.getTime())) {
+        monthLabel = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      }
+    }
+
+    return {
+      monthKey,
+      monthLabel,
+      expenses: monthExpenses,
+      total
+    };
+  });
+};
+
 // Utility to trigger browser file download
 export const triggerDownload = (content: string | Blob, fileName: string, mimeType: string) => {
   try {
@@ -312,40 +363,102 @@ export const exportMemberDataToPDF = (
 
   currentY += 32;
 
-  // Table 1: Expense Transactions
+  // Table 1: Expense Transactions grouped by month
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`Expense Transactions (${memberExpenses.length})`, 14, currentY);
-  currentY += 4;
+  doc.text(`Month-Wise Expense Transactions (${memberExpenses.length})`, 14, currentY);
+  currentY += 6;
 
-  const expenseRows = memberExpenses.map((exp, index) => [
-    (index + 1).toString(),
-    exp.date || '-',
-    getCatLabel(exp.category),
-    exp.notes || 'No note',
-    exp.isEmiPayment ? 'EMI' : 'Regular',
-    `Rs. ${(Number(exp.amount) || 0).toLocaleString('en-IN')}`
-  ]);
+  const memberMonthGroups = groupExpensesByMonth(memberExpenses);
 
-  autoTable(doc, {
-    startY: currentY,
-    head: [['#', 'Date', 'Category', 'Notes', 'Type', 'Amount']],
-    body: expenseRows.length > 0 ? expenseRows : [['-', '-', 'No expenses recorded for this member', '-', '-', 'Rs. 0']],
-    theme: 'striped',
-    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
-    styles: { fontSize: 8, cellPadding: 2.5 },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 32 },
-      3: { cellWidth: 65 },
-      4: { cellWidth: 20 },
-      5: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
-    }
-  });
+  if (memberMonthGroups.length === 0) {
+    autoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Date', 'Category', 'Notes', 'Type', 'Amount']],
+      body: [['-', '-', 'No expenses recorded for this member', '-', '-', 'Rs. 0']],
+      theme: 'striped',
+      headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 }
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  } else {
+    memberMonthGroups.forEach((group) => {
+      if (currentY > 230) {
+        doc.addPage();
+        currentY = 20;
+      }
 
-  currentY = (doc as any).lastAutoTable.finalY + 10;
+      // Group Header Banner
+      doc.setFillColor(238, 242, 255); // Indigo 50
+      doc.roundedRect(14, currentY, pageWidth - 28, 8, 2, 2, 'F');
+      doc.setDrawColor(199, 210, 254); // Indigo 200
+      doc.roundedRect(14, currentY, pageWidth - 28, 8, 2, 2, 'D');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(67, 56, 202); // Indigo 700
+      doc.text(`${group.monthLabel} (${group.monthKey})`, 18, currentY + 5.5);
+
+      doc.setFontSize(8);
+      doc.setTextColor(30, 41, 59);
+      doc.text(
+        `Total: Rs. ${group.total.toLocaleString('en-IN')}  (${group.expenses.length} ${group.expenses.length === 1 ? 'item' : 'items'})`,
+        pageWidth - 18,
+        currentY + 5.5,
+        { align: 'right' }
+      );
+
+      currentY += 11;
+
+      const groupRows = group.expenses.map((exp, index) => [
+        (index + 1).toString(),
+        exp.date || '-',
+        getCatLabel(exp.category),
+        exp.notes || 'No note',
+        exp.isEmiPayment ? 'EMI' : 'Regular',
+        `Rs. ${(Number(exp.amount) || 0).toLocaleString('en-IN')}`
+      ]);
+
+      // Monthly Total Subtotal row
+      groupRows.push([
+        '',
+        '',
+        `Subtotal (${group.monthLabel})`,
+        `${group.expenses.length} entries`,
+        '',
+        `Rs. ${group.total.toLocaleString('en-IN')}`
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['#', 'Date', 'Category', 'Notes', 'Type', 'Amount']],
+        body: groupRows,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 32 },
+          3: { cellWidth: 65 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+        },
+        didParseCell: (data) => {
+          if (data.row.index === groupRows.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [241, 245, 249];
+            if (data.column.index === 5) {
+              data.cell.styles.textColor = [79, 70, 229];
+            }
+          }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+    });
+  }
 
   // Table 2: EMI Plans if any
   if (memberEmis.length > 0) {
@@ -702,40 +815,102 @@ export const exportBackupPDF = (backupData: FullBackupData) => {
 
   currentY += 32;
 
-  // Table 1: Expenses Register
+  // Table 1: Month-Wise Expenses Register
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`1. Expenses Register (${sanitizedExpenses.length} Records)`, 14, currentY);
-  currentY += 4;
+  doc.text(`1. Month-Wise Expenses Register (${sanitizedExpenses.length} Records)`, 14, currentY);
+  currentY += 6;
 
-  const expenseRows = sanitizedExpenses.map((exp, idx) => [
-    (idx + 1).toString(),
-    exp.date || '-',
-    exp.paidBy || '-',
-    exp.category || '-',
-    exp.notes || '-',
-    `Rs. ${(Number(exp.amount) || 0).toLocaleString('en-IN')}`
-  ]);
+  const backupMonthGroups = groupExpensesByMonth(sanitizedExpenses);
 
-  autoTable(doc, {
-    startY: currentY,
-    head: [['#', 'Date', 'Paid By', 'Category', 'Notes', 'Amount']],
-    body: expenseRows.length > 0 ? expenseRows : [['-', '-', '-', 'No expenses recorded', '-', 'Rs. 0']],
-    theme: 'striped',
-    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
-    styles: { fontSize: 8, cellPadding: 2.5 },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 24 },
-      2: { cellWidth: 26 },
-      3: { cellWidth: 30 },
-      4: { cellWidth: 62 },
-      5: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
-    }
-  });
+  if (backupMonthGroups.length === 0) {
+    autoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Date', 'Paid By', 'Category', 'Notes', 'Amount']],
+      body: [['-', '-', '-', 'No expenses recorded', '-', 'Rs. 0']],
+      theme: 'striped',
+      headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 }
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  } else {
+    backupMonthGroups.forEach((group) => {
+      if (currentY > 230) {
+        doc.addPage();
+        currentY = 20;
+      }
 
-  currentY = (doc as any).lastAutoTable.finalY + 10;
+      // Month Group Header Banner
+      doc.setFillColor(238, 242, 255); // Indigo 50
+      doc.roundedRect(14, currentY, pageWidth - 28, 8, 2, 2, 'F');
+      doc.setDrawColor(199, 210, 254); // Indigo 200
+      doc.roundedRect(14, currentY, pageWidth - 28, 8, 2, 2, 'D');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(67, 56, 202); // Indigo 700
+      doc.text(`${group.monthLabel} (${group.monthKey})`, 18, currentY + 5.5);
+
+      doc.setFontSize(8);
+      doc.setTextColor(30, 41, 59);
+      doc.text(
+        `Month Total: Rs. ${group.total.toLocaleString('en-IN')}  |  ${group.expenses.length} records`,
+        pageWidth - 18,
+        currentY + 5.5,
+        { align: 'right' }
+      );
+
+      currentY += 11;
+
+      const groupRows = group.expenses.map((exp, idx) => [
+        (idx + 1).toString(),
+        exp.date || '-',
+        exp.paidBy || '-',
+        exp.category || '-',
+        exp.notes || '-',
+        `Rs. ${(Number(exp.amount) || 0).toLocaleString('en-IN')}`
+      ]);
+
+      // Monthly Total Subtotal row
+      groupRows.push([
+        '',
+        '',
+        '',
+        `Subtotal (${group.monthLabel})`,
+        `${group.expenses.length} records`,
+        `Rs. ${group.total.toLocaleString('en-IN')}`
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['#', 'Date', 'Paid By', 'Category', 'Notes', 'Amount']],
+        body: groupRows,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 24 },
+          2: { cellWidth: 26 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 62 },
+          5: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+        },
+        didParseCell: (data) => {
+          if (data.row.index === groupRows.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [241, 245, 249];
+            if (data.column.index === 5) {
+              data.cell.styles.textColor = [79, 70, 229];
+            }
+          }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+    });
+  }
 
   // Table 2: Member Spending & Settlement Breakdown
   const membersList = backupData.familyMembers && backupData.familyMembers.length > 0 
@@ -1058,38 +1233,102 @@ export const exportExpensesToPDF = (params: ExportPDFParams) => {
 
   currentY = (doc as any).lastAutoTable.finalY + 10;
 
-  // Detailed Transactions Table
+  // Detailed Transactions Table Grouped by Month
+  const reportMonthGroups = groupExpensesByMonth(expenses);
+
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(30, 41, 59);
-  doc.text(`Transaction Details (${expenses.length} Entries)`, 14, currentY);
+  doc.text(`Month-Wise Transaction Breakdown (${expenses.length} Entries)`, 14, currentY);
 
-  currentY += 4;
+  currentY += 6;
 
-  const expenseRows = expenses.map(exp => [
-    exp.date,
-    exp.paidBy,
-    exp.category,
-    exp.notes || '-',
-    `Rs. ${Number(exp.amount).toLocaleString('en-IN')}`
-  ]);
+  if (reportMonthGroups.length === 0) {
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Date', 'Paid By', 'Category', 'Notes / Details', 'Amount']],
+      body: [['-', '-', 'No transactions recorded', '-', 'Rs. 0']],
+      theme: 'striped',
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      bodyStyles: { fontSize: 8, textColor: [51, 65, 85] },
+      margin: { left: 14, right: 14 }
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  } else {
+    reportMonthGroups.forEach((group) => {
+      if (currentY > 230) {
+        doc.addPage();
+        currentY = 20;
+      }
 
-  autoTable(doc, {
-    startY: currentY,
-    head: [['Date', 'Paid By', 'Category', 'Notes / Details', 'Amount']],
-    body: expenseRows,
-    theme: 'striped',
-    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-    bodyStyles: { fontSize: 8, textColor: [51, 65, 85] },
-    columnStyles: {
-      0: { cellWidth: 26 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 36 },
-      3: { cellWidth: 58 },
-      4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
-    },
-    margin: { left: 14, right: 14 }
-  });
+      // Month Header Banner
+      doc.setFillColor(241, 245, 249); // Slate 100
+      doc.roundedRect(14, currentY, pageWidth - 28, 8.5, 2, 2, 'F');
+      doc.setDrawColor(203, 213, 225); // Slate 300
+      doc.roundedRect(14, currentY, pageWidth - 28, 8.5, 2, 2, 'D');
+
+      doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${group.monthLabel} (${group.monthKey})`, 18, currentY + 5.5);
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(79, 70, 229);
+      doc.text(
+        `Total Spent: Rs. ${group.total.toLocaleString('en-IN')}  (${group.expenses.length} ${group.expenses.length === 1 ? 'item' : 'items'})`,
+        pageWidth - 18,
+        currentY + 5.5,
+        { align: 'right' }
+      );
+
+      currentY += 11.5;
+
+      const monthRows = group.expenses.map(exp => [
+        exp.date,
+        exp.paidBy,
+        exp.category,
+        exp.notes || '-',
+        `Rs. ${Number(exp.amount).toLocaleString('en-IN')}`
+      ]);
+
+      // Monthly Subtotal row
+      monthRows.push([
+        '',
+        '',
+        `Subtotal (${group.monthLabel})`,
+        `${group.expenses.length} entries`,
+        `Rs. ${group.total.toLocaleString('en-IN')}`
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Date', 'Paid By', 'Category', 'Notes / Details', 'Amount']],
+        body: monthRows,
+        theme: 'striped',
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+        bodyStyles: { fontSize: 8, textColor: [51, 65, 85] },
+        columnStyles: {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 32 },
+          2: { cellWidth: 36 },
+          3: { cellWidth: 58 },
+          4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: 14, right: 14 },
+        didParseCell: (data) => {
+          if (data.row.index === monthRows.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [248, 250, 252];
+            if (data.column.index === 4) {
+              data.cell.styles.textColor = [220, 38, 38];
+            }
+          }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+    });
+  }
 
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
