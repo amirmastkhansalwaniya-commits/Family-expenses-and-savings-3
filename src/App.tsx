@@ -35,6 +35,7 @@ import { FileText, X, Download } from 'lucide-react';
 import { Header } from './components/Header';
 import { ActiveMemberBar } from './components/ActiveMemberBar';
 import { DashboardView } from './components/DashboardView';
+import { MonthWiseDataView } from './components/MonthWiseDataView';
 import { TransactionHistoryLog } from './components/TransactionHistoryLog';
 import { AndroidGuideView } from './components/AndroidGuideView';
 import { AddExpenseModal } from './components/AddExpenseModal';
@@ -63,7 +64,7 @@ const SAMPLE_SEED_SIPS: Omit<SipPlan, 'id'>[] = [
     tenureYears: 15,
     startMonth: '2025-01',
     completedMonths: 18,
-    paidBy: 'Amir Khan',
+    paidBy: 'Demo Member',
     fundCategory: 'Mutual Funds (Equity)',
     goalName: 'Wealth Generation',
     notes: 'Auto-debit on 10th of every month',
@@ -111,7 +112,7 @@ const SAMPLE_SEED_EMIS: Omit<EmiPlan, 'id'>[] = [
     tenureMonths: 12,
     paidMonths: 4,
     startMonth: '2026-04',
-    paidBy: 'Amir Khan',
+    paidBy: 'Demo Member',
     category: 'Shopping',
     notes: 'HDFC Credit Card No Cost EMI',
     status: 'active',
@@ -152,7 +153,7 @@ const SAMPLE_SEED_DEBTS: Omit<DebtRecord, 'id'>[] = [
     personName: 'Ramesh Sharma (Shop Dealer)',
     totalAmount: 50000,
     remainingAmount: 20000,
-    paidBy: 'Amir Khan',
+    paidBy: 'Demo Member',
     dueDate: '2026-10-15',
     notes: '0% interest hand loan from family friend',
     status: 'active',
@@ -171,11 +172,11 @@ const SAMPLE_SEED_DEBTS: Omit<DebtRecord, 'id'>[] = [
 ];
 
 const DEFAULT_MEMBER_BANK_AMOUNTS: Record<FamilyMember, Omit<MemberBankAmount, 'id'>> = {
-  'Aamir Khan': {
-    member: 'Aamir Khan',
+  'Demo Member': {
+    member: 'Demo Member',
     pendingBankAmount: 0,
     bankName: 'SBI Bank',
-    upiId: 'aamir@okicici',
+    upiId: 'demo@okicici',
     notes: 'Bank balance settled',
     status: 'received',
     lastUpdated: '2026-08-01',
@@ -275,12 +276,11 @@ export default function App() {
   // Active user profile state (persisted in localStorage)
   const [activeMember, setActiveMember] = useState<FamilyMember>(() => {
     const saved = localStorage.getItem('family_active_member');
-    if (saved === 'Amir Khan') return 'Aamir Khan';
-    return saved ? (saved as FamilyMember) : 'Aamir Khan';
+    return (saved as FamilyMember) || FAMILY_MEMBERS[0] || 'Aamir Khan';
   });
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide'>('dashboard');
 
   // 9:16 Aspect Ratio Mode toggle
   const [isRatio916, setIsRatio916] = useState<boolean>(() => {
@@ -2129,7 +2129,8 @@ export default function App() {
           allTimeMemberTotals={allTimeMemberTotals}
           allExpenses={expenses}
           selectedMonth={selectedMonth}
-          onMonthChange={setSelectedMonth}
+          onMonthChange={handleSelectMonth}
+          onNavigateTab={setActiveTab}
           memberBankAmounts={memberBankAmounts}
           onUpdateBankAmount={handleUpdateMemberBankAmount}
           theme={theme}
@@ -2177,6 +2178,30 @@ export default function App() {
               onOpenManageMembers={() => setIsManageMembersModalOpen(true)}
               isPdfModalOpen={isPdfModalOpen}
               setIsPdfModalOpen={setIsPdfModalOpen}
+            />
+          )}
+
+          {activeTab === 'months' && (
+            <MonthWiseDataView
+              expenses={expenses}
+              selectedMonth={selectedMonth}
+              onMonthChange={handleSelectMonth}
+              onNavigateTab={setActiveTab}
+              onOpenAddExpense={() => {
+                setEditingExpense(null);
+                setIsAddModalOpen(true);
+              }}
+              onEditExpense={(expense) => {
+                setEditingExpense(expense);
+                setIsAddModalOpen(true);
+              }}
+              onDeleteExpense={handleDeleteExpense}
+              familyMembers={familyMembers}
+              memberConfigs={memberConfigs}
+              memberBankAmounts={memberBankAmounts}
+              monthlyBudget={monthlyBudget}
+              language={language}
+              theme={theme}
             />
           )}
 
