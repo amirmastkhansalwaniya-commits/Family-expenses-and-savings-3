@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Expense, FamilyMember, FAMILY_MEMBERS, CATEGORIES, MEMBER_THEMES, MemberCustomConfig, getMemberTheme } from '../types';
 import { formatINR, formatDateDisplay } from '../utils/formatters';
@@ -9,7 +9,8 @@ import {
   parseBackupJSON, 
   parseExpensesCSV, 
   parseBackupPDF, 
-  parseExpensesPDF 
+  parseExpensesPDF,
+  groupExpensesByMonth
 } from '../utils/exportImport';
 import { 
   Search, 
@@ -99,11 +100,25 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [isGroupByMonth, setIsGroupByMonth] = useState<boolean>(true);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Available unique months list
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach(e => {
+      if (e.date && e.date.length >= 7) {
+        set.add(e.date.substring(0, 7));
+      }
+    });
+    if (selectedMonth) set.add(selectedMonth);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [expenses, selectedMonth]);
 
   // Backup Expenses JSON
   const handleBackupJsonLog = () => {
@@ -218,9 +233,11 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
       return false;
     }
     
-    // If no custom date range set, use selectedMonth filter
-    if (!startDate && !endDate && selectedMonth && exp.date && !exp.date.startsWith(selectedMonth)) {
-      return false;
+    // If no custom date range set, use filterMonth if specified
+    if (!startDate && !endDate) {
+      if (filterMonth !== 'all' && exp.date && !exp.date.startsWith(filterMonth)) {
+        return false;
+      }
     }
 
     // Multi-select Member filter
@@ -251,6 +268,12 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
   });
 
   const totalFilteredAmount = filtered.reduce((a, b) => a + (Number(b.amount) || 0), 0);
+
+  // Grouped filtered transactions by month when month grouping is active
+  const monthGroupedFiltered = useMemo(() => {
+    if (!isGroupByMonth) return null;
+    return groupExpensesByMonth(filtered);
+  }, [filtered, isGroupByMonth]);
 
   const handleExportCSV = () => {
     if (filtered.length === 0) {
@@ -666,118 +689,324 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
         </div>
       </div>
 
-      {/* Transaction Feed */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {filtered.map((exp, index) => {
-            const memberTheme = MEMBER_THEMES[exp.paidBy as FamilyMember];
-            const catConfig = CATEGORY_UI_CONFIG[exp.category] || CATEGORY_UI_CONFIG['Others'];
-            const CatIcon = catConfig.Icon;
+      {/* Month-Specific Log Selector & Group by Month Toolbar */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 shrink-0">
+            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+            <span>मंथ चुनें (Month Filter):</span>
+          </span>
 
+          {/* All Months Pill */}
+          <button
+            type="button"
+            onClick={() => setFilterMonth('all')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              filterMonth === 'all'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            All Months (सभी महीने)
+          </button>
+
+          {/* Recent Month Pills */}
+          {availableMonths.slice(0, 5).map((mKey) => {
+            const isSelected = filterMonth === mKey;
             return (
-              <motion.div
-                key={`txn-log-${exp.id || 'no-id'}-${index}`}
-                layout
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -12, scale: 0.96 }}
-                transition={{
-                  duration: 0.22,
-                  delay: Math.min(index * 0.03, 0.3),
-                  ease: [0.25, 0.1, 0.25, 1.0],
-                }}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
+              <button
+                key={`hist-month-${mKey}`}
+                type="button"
+                onClick={() => setFilterMonth(mKey)}
+                className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer font-mono ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                }`}
               >
-                {/* Left Info */}
-                <div className="flex items-start gap-3.5">
-                  {/* Visual Category Icon Badge with Member Avatar Overlay */}
-                  <div className="relative shrink-0">
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${catConfig.bg} ${catConfig.border} ${catConfig.text}`}>
-                      <CatIcon className="w-5.5 h-5.5 stroke-[2.2]" />
-                    </div>
-                    {memberTheme && (
-                      <div 
-                        className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-slate-900 shadow-2xs ${memberTheme.avatarBg}`}
-                        title={`Paid by ${exp.paidBy}`}
-                      >
-                        {memberTheme.initials}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center flex-wrap gap-2">
-                      <span className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                        <CatIcon className={`w-4 h-4 ${catConfig.text} hidden sm:inline-block`} />
-                        <span>{getCategoryLabel(exp.category, language)}</span>
-                      </span>
-                      {memberTheme && (
-                        <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border flex items-center gap-1 ${memberTheme.badgeBg} ${memberTheme.badgeText}`}>
-                          <span>{memberTheme.emoji}</span>
-                          <span>Paid by {exp.paidBy}</span>
-                        </span>
-                      )}
-                      {exp.notes && exp.notes.startsWith('[') && exp.notes.includes(']') && (
-                        <span className="px-2 py-0.5 text-[11px] font-black rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-                          <span>🛒</span>
-                          <span>{exp.notes.slice(1, exp.notes.indexOf(']'))}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {exp.notes && (
-                      <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
-                        {exp.notes}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-400 mt-1 font-mono font-bold">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        {formatDateDisplay(exp.date)}
-                      </span>
-                      {exp.time && (
-                        <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                          <Clock className="w-3 h-3 text-indigo-500" />
-                          {exp.time}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Amount & Actions */}
-                <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
-                  <div className="text-right">
-                    <span className="text-lg font-black text-slate-900 font-mono block">
-                      {formatINR(exp.amount)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onEditExpense(exp)}
-                      title="Edit expense"
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => setExpenseToDelete(exp)}
-                      disabled={deletingId === exp.id}
-                      title="Delete expense"
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-500" />
-                    </button>
-                  </div>
-                </div>
-
-              </motion.div>
+                {mKey}
+              </button>
             );
           })}
-        </AnimatePresence>
+
+          {/* Month input */}
+          <input
+            type="month"
+            value={filterMonth !== 'all' ? filterMonth : ''}
+            onChange={(e) => setFilterMonth(e.target.value || 'all')}
+            className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer text-slate-800 dark:text-white"
+            title="Choose specific month"
+          />
+        </div>
+
+        {/* Group by Month Toggle */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsGroupByMonth(!isGroupByMonth)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center gap-1.5 ${
+              isGroupByMonth
+                ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-2xs'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+            }`}
+            title="Separate expenses by each month"
+          >
+            <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>हर मंथ अलग-अलग दिखाएं (Group by Month)</span>
+            <span className={`w-2 h-2 rounded-full ${isGroupByMonth ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+          </button>
+        </div>
+      </div>
+
+      {/* Transaction Feed */}
+      <div className="space-y-4">
+        {isGroupByMonth && monthGroupedFiltered && monthGroupedFiltered.length > 0 ? (
+          // Render grouped by month
+          monthGroupedFiltered.map((group) => (
+            <div key={`month-section-${group.monthKey}`} className="space-y-2.5 bg-slate-50/50 dark:bg-slate-900/40 p-3 rounded-3xl border border-slate-200/80 dark:border-slate-800/80">
+              {/* Monthly Group Header Banner */}
+              <div className="p-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="w-7 h-7 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-300">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <span className="font-black text-sm">{group.monthLabel}</span>
+                  <span className="text-xs text-indigo-200 font-mono font-bold">({group.monthKey})</span>
+                  <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">
+                    {group.expenses.length} entries
+                  </span>
+                </div>
+                <div className="text-left sm:text-right font-mono font-black text-sm text-emerald-400">
+                  Subtotal: {formatINR(group.total)}
+                </div>
+              </div>
+
+              {/* Transactions inside this month */}
+              <div className="space-y-2 pl-1 sm:pl-2">
+                <AnimatePresence mode="popLayout">
+                  {group.expenses.map((exp, index) => {
+                    const memberTheme = MEMBER_THEMES[exp.paidBy as FamilyMember];
+                    const catConfig = CATEGORY_UI_CONFIG[exp.category] || CATEGORY_UI_CONFIG['Others'];
+                    const CatIcon = catConfig.Icon;
+
+                    return (
+                      <motion.div
+                        key={`txn-log-${exp.id || 'no-id'}-${index}`}
+                        layout
+                        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -12, scale: 0.96 }}
+                        transition={{
+                          duration: 0.22,
+                          delay: Math.min(index * 0.02, 0.2),
+                          ease: [0.25, 0.1, 0.25, 1.0],
+                        }}
+                        className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
+                      >
+                        {/* Left Info */}
+                        <div className="flex items-start gap-3.5">
+                          <div className="relative shrink-0">
+                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${catConfig.bg} ${catConfig.border} ${catConfig.text}`}>
+                              <CatIcon className="w-5.5 h-5.5 stroke-[2.2]" />
+                            </div>
+                            {memberTheme && (
+                              <div 
+                                className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-slate-900 shadow-2xs ${memberTheme.avatarBg}`}
+                                title={`Paid by ${exp.paidBy}`}
+                              >
+                                {memberTheme.initials}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center flex-wrap gap-2">
+                              <span className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                <CatIcon className={`w-4 h-4 ${catConfig.text} hidden sm:inline-block`} />
+                                <span>{getCategoryLabel(exp.category, language)}</span>
+                              </span>
+                              {memberTheme && (
+                                <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border flex items-center gap-1 ${memberTheme.badgeBg} ${memberTheme.badgeText}`}>
+                                  <span>{memberTheme.emoji}</span>
+                                  <span>Paid by {exp.paidBy}</span>
+                                </span>
+                              )}
+                              {exp.notes && exp.notes.startsWith('[') && exp.notes.includes(']') && (
+                                <span className="px-2 py-0.5 text-[11px] font-black rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                  <span>🛒</span>
+                                  <span>{exp.notes.slice(1, exp.notes.indexOf(']'))}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {exp.notes && (
+                              <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
+                                {exp.notes}
+                              </p>
+                            )}
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-400 mt-1 font-mono font-bold">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                {formatDateDisplay(exp.date)}
+                              </span>
+                              {exp.time && (
+                                <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                  <Clock className="w-3 h-3 text-indigo-500" />
+                                  {exp.time}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right Amount & Actions */}
+                        <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
+                          <div className="text-right">
+                            <span className="text-lg font-black text-slate-900 dark:text-white font-mono block">
+                              {formatINR(exp.amount)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => onEditExpense(exp)}
+                              title="Edit expense"
+                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={() => setExpenseToDelete(exp)}
+                              disabled={deletingId === exp.id}
+                              title="Delete expense"
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-500" />
+                            </button>
+                          </div>
+                        </div>
+
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            </div>
+          ))
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {filtered.map((exp, index) => {
+              const memberTheme = MEMBER_THEMES[exp.paidBy as FamilyMember];
+              const catConfig = CATEGORY_UI_CONFIG[exp.category] || CATEGORY_UI_CONFIG['Others'];
+              const CatIcon = catConfig.Icon;
+
+              return (
+                <motion.div
+                  key={`txn-log-${exp.id || 'no-id'}-${index}`}
+                  layout
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -12, scale: 0.96 }}
+                  transition={{
+                    duration: 0.22,
+                    delay: Math.min(index * 0.03, 0.3),
+                    ease: [0.25, 0.1, 0.25, 1.0],
+                  }}
+                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
+                >
+                  {/* Left Info */}
+                  <div className="flex items-start gap-3.5">
+                    {/* Visual Category Icon Badge with Member Avatar Overlay */}
+                    <div className="relative shrink-0">
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${catConfig.bg} ${catConfig.border} ${catConfig.text}`}>
+                        <CatIcon className="w-5.5 h-5.5 stroke-[2.2]" />
+                      </div>
+                      {memberTheme && (
+                        <div 
+                          className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-slate-900 shadow-2xs ${memberTheme.avatarBg}`}
+                          title={`Paid by ${exp.paidBy}`}
+                        >
+                          {memberTheme.initials}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center flex-wrap gap-2">
+                        <span className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <CatIcon className={`w-4 h-4 ${catConfig.text} hidden sm:inline-block`} />
+                          <span>{getCategoryLabel(exp.category, language)}</span>
+                        </span>
+                        {memberTheme && (
+                          <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border flex items-center gap-1 ${memberTheme.badgeBg} ${memberTheme.badgeText}`}>
+                            <span>{memberTheme.emoji}</span>
+                            <span>Paid by {exp.paidBy}</span>
+                          </span>
+                        )}
+                        {exp.notes && exp.notes.startsWith('[') && exp.notes.includes(']') && (
+                          <span className="px-2 py-0.5 text-[11px] font-black rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                            <span>🛒</span>
+                            <span>{exp.notes.slice(1, exp.notes.indexOf(']'))}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {exp.notes && (
+                        <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
+                          {exp.notes}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-400 mt-1 font-mono font-bold">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          {formatDateDisplay(exp.date)}
+                        </span>
+                        {exp.time && (
+                          <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                            <Clock className="w-3 h-3 text-indigo-500" />
+                            {exp.time}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Amount & Actions */}
+                  <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
+                    <div className="text-right">
+                      <span className="text-lg font-black text-slate-900 dark:text-white font-mono block">
+                        {formatINR(exp.amount)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onEditExpense(exp)}
+                        title="Edit expense"
+                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => setExpenseToDelete(exp)}
+                        disabled={deletingId === exp.id}
+                        title="Delete expense"
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-500" />
+                      </button>
+                    </div>
+                  </div>
+
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        )}
 
         {filtered.length === 0 && (
           <motion.div
@@ -813,8 +1042,12 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                 <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Delete Expense Record?</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">This action cannot be undone.</p>
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+                  {language === 'hi' ? 'खर्च डिलीट करने की पुष्टि करें' : 'Delete Expense Record?'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {language === 'hi' ? 'क्या आप वाकई इस ट्रांजैक्शन को हटाना चाहते हैं? यह क्रिया वापस नहीं ली जा सकेगी।' : 'This action cannot be undone.'}
+                </p>
               </div>
             </div>
 
@@ -835,7 +1068,7 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                 disabled={deletingId === expenseToDelete.id}
                 className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                Cancel
+                {language === 'hi' ? 'रद्द करें (Cancel)' : 'Cancel'}
               </button>
               <button
                 type="button"
@@ -856,12 +1089,12 @@ export const TransactionHistoryLog: React.FC<TransactionHistoryLogProps> = ({
                 {deletingId === expenseToDelete.id ? (
                   <>
                     <RotateCcw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Deleting...</span>
+                    <span>{language === 'hi' ? 'हटाया जा रहा है...' : 'Deleting...'}</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Permanently</span>
+                    <span>{language === 'hi' ? 'हाँ, डिलीट करें (Confirm)' : 'Delete Permanently'}</span>
                   </>
                 )}
               </button>

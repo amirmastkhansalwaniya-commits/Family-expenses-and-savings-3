@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FamilyMember, FAMILY_MEMBERS, MemberCustomConfig } from '../types';
-import { Plus, Layers, History, CreditCard, Settings, TrendingUp, HandCoins, ChevronDown } from 'lucide-react';
+import { Plus, Layers, History, CreditCard, Settings, TrendingUp, HandCoins, ChevronDown, Calendar } from 'lucide-react';
 import { Language, t } from '../utils/translations';
 import { AppLogo } from './AppLogo';
 import { MemberAvatar } from './MemberAvatar';
@@ -14,8 +14,8 @@ import {
 interface HeaderProps {
   activeMember: FamilyMember;
   onSelectMember: (member: FamilyMember) => void;
-  activeTab: 'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide';
-  setActiveTab: (tab: 'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide') => void;
+  activeTab: 'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide';
+  setActiveTab: (tab: 'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide') => void;
   onOpenAddExpense: () => void;
   isSyncing: boolean;
   totalExpensesCount: number;
@@ -161,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
                       Green = Active
                     </span>
                   </div>
-                  <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5">
+                  <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
                     {familyMembers.map((m) => {
                       const isActive = activeMember === m;
                       return (
@@ -222,6 +222,25 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Layers className="w-4 h-4" />
             <span>{t('tabDashboard', language)}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('months')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'months'
+                ? isDark
+                  ? 'bg-indigo-950/80 text-indigo-300 font-extrabold border border-indigo-800/80'
+                  : 'bg-indigo-50 text-indigo-700 font-extrabold shadow-xs'
+                : isDark
+                  ? 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-100'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-indigo-500" />
+            <span className="flex items-center gap-1.5">
+              <span>{t('tabMonths', language) || (language === 'hi' ? 'हर मंथ का डेटा' : 'Monthly Data')}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="New Option"></span>
+            </span>
           </button>
 
           <button

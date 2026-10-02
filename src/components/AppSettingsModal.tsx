@@ -840,33 +840,6 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Admin Security PIN */}
-              {onOpenChangePinModal && (
-                <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                      <span>Admin Security PIN Code</span>
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                      PIN status: <strong className="text-emerald-600 dark:text-emerald-400">{adminPin ? 'Protected (Active)' : 'Default (0000)'}</strong>
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenChangePinModal();
-                    }}
-                    className="px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1"
-                  >
-                    <Key className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Change PIN</span>
-                  </button>
-                </div>
-              )}
-
             </div>
           )}
 
@@ -974,8 +947,6 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 )}
 
                 {/* Share App Link & QR */}
-
-                {/* Share App Link & QR */}
                 {onOpenWebLinkModal && (
                   <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between sm:col-span-2">
                     <div>
@@ -1004,6 +975,32 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
             </div>
           )}
 
+          {/* Admin Security PIN Option */}
+          {onOpenChangePinModal && (
+            <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Admin Security PIN Code</span>
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  PIN status: <strong className="text-emerald-600 dark:text-emerald-400">{adminPin ? 'Protected (Active)' : 'Default (0000)'}</strong>
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenChangePinModal();
+                }}
+                className="px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-500" />
+                <span>Change PIN</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

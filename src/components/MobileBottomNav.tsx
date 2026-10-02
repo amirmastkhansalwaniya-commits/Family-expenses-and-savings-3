@@ -3,8 +3,8 @@ import { Layers, History, CreditCard, Smartphone, Plus, TrendingUp, HandCoins } 
 import { Language, t } from '../utils/translations';
 
 interface MobileBottomNavProps {
-  activeTab: 'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide';
-  setActiveTab: (tab: 'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide') => void;
+  activeTab: 'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide';
+  setActiveTab: (tab: 'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide') => void;
   onOpenAddExpense: () => void;
   theme: 'light' | 'dark';
   language: Language;

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { FamilyMember, FAMILY_MEMBERS, MEMBER_THEMES, MemberBankAmount, Expense, ADMIN_MEMBER, MemberCustomConfig, getMemberTheme, EmiPlan } from '../types';
-import { CheckCircle2, Landmark, Edit2, X, Check, History, Calendar, ArrowRight, Lock, ShieldAlert, UserPlus, Users, Download, Wallet, ArrowRightLeft } from 'lucide-react';
+import { CheckCircle2, Landmark, Edit2, X, Check, History, Calendar, ArrowRight, Lock, ShieldAlert, UserPlus, Users, Download, Wallet, ArrowRightLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatINRCompact, formatINR, formatMonthName } from '../utils/formatters';
 import { MemberAvatar } from './MemberAvatar';
 import { exportMemberDataToCSV, exportMemberDataToJSON, exportMemberDataToPDF } from '../utils/exportImport';
@@ -14,6 +14,7 @@ interface ActiveMemberBarProps {
   allExpenses?: Expense[];
   selectedMonth?: string;
   onMonthChange?: (month: string) => void;
+  onNavigateTab?: (tab: 'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts') => void;
   memberBankAmounts?: Record<FamilyMember, MemberBankAmount>;
   onUpdateBankAmount?: (member: FamilyMember, updates: Partial<MemberBankAmount>) => Promise<void> | void;
   theme?: 'light' | 'dark';
@@ -34,6 +35,7 @@ export const ActiveMemberBar: React.FC<ActiveMemberBarProps> = ({
   allExpenses = [],
   selectedMonth,
   onMonthChange,
+  onNavigateTab,
   memberBankAmounts,
   onUpdateBankAmount,
   theme = 'light',
@@ -207,11 +209,116 @@ export const ActiveMemberBar: React.FC<ActiveMemberBarProps> = ({
     };
   }, [historyMember, allExpenses]);
 
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    if (!selectedMonth || !onMonthChange) return;
+    try {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const d = new Date(y, m - 2, 1);
+      const prevKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      onMonthChange(prevKey);
+    } catch {}
+  };
+
+  const handleNextMonth = () => {
+    if (!selectedMonth || !onMonthChange) return;
+    try {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const d = new Date(y, m, 1);
+      const nextKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      onMonthChange(nextKey);
+    } catch {}
+  };
+
+  const currentMonthDisplayName = useMemo(() => {
+    if (!selectedMonth) return 'Current Month';
+    try {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const d = new Date(y, m - 1, 1);
+      return d.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' });
+    } catch {
+      return selectedMonth;
+    }
+  }, [selectedMonth, language]);
+
   return (
     <div className={`border-b py-3.5 px-4 sm:px-6 lg:px-8 transition-colors duration-200 ${
       isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white/80 backdrop-blur-md border-slate-100'
     }`}>
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto space-y-3">
+        
+        {/* Global Month Selection & Quick Navigation Toolbar */}
+        <div className={`p-2.5 sm:p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+          isDark ? 'bg-slate-950/60 border-slate-800/80' : 'bg-slate-50/90 border-slate-200/80'
+        }`}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-indigo-500" />
+              <span>{language === 'hi' ? 'सक्रिय महीना:' : 'Active Month:'}</span>
+            </span>
+
+            {/* Previous Month Button */}
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              className={`p-1.5 rounded-xl border text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer ${
+                isDark ? 'bg-slate-900 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100'
+              }`}
+              title="Previous Month"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Current Month Name Pill */}
+            <div className={`px-3 py-1.5 rounded-xl border font-black text-xs font-mono flex items-center gap-1.5 ${
+              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
+            }`}>
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>{currentMonthDisplayName}</span>
+              <span className="text-[10px] text-slate-400 font-normal">({selectedMonth})</span>
+            </div>
+
+            {/* Next Month Button */}
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              className={`p-1.5 rounded-xl border text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer ${
+                isDark ? 'bg-slate-900 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100'
+              }`}
+              title="Next Month"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Quick Month Date Input Picker */}
+            {onMonthChange && (
+              <input
+                type="month"
+                value={selectedMonth || ''}
+                onChange={(e) => e.target.value && onMonthChange(e.target.value)}
+                className={`px-2 py-1 rounded-xl text-xs font-bold font-mono border focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer ${
+                  isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                }`}
+                title="Pick any month from calendar"
+              />
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            {onNavigateTab && (
+              <button
+                type="button"
+                onClick={() => onNavigateTab('months')}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                title="View data separated by every month"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{language === 'hi' ? 'हर मंथ का डेटा देखें ➔' : 'View Month-Wise Data ➔'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2.5 gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-extrabold uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-400'}`}>
