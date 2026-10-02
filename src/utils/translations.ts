@@ -28,6 +28,7 @@ export const translations: Record<Language, Record<string, string>> = {
     
     // Tabs
     tabDashboard: 'Overview & Analytics',
+    tabMonths: 'Monthly Data (Month-Wise)',
     tabTransactions: 'Expense Log',
     tabGrocery: 'Smart Grocery Manager',
     tabSips: 'SIP & Investments',
@@ -201,6 +202,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Tabs
     tabDashboard: 'अवलोकन और विश्लेषण',
+    tabMonths: 'हर मंथ का डेटा (Month-Wise)',
     tabTransactions: 'खर्च लॉग',
     tabGrocery: 'स्मार्ट राशन व ग्रॉसरी मैनेजर',
     tabSips: 'एसआईपी और निवेश',
@@ -374,6 +376,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Tabs
     tabDashboard: 'ਸੰਖੇਪ ਅਤੇ ਵਿਸ਼ਲੇਸ਼ਣ',
+    tabMonths: 'ਮਹੀਨਾਵਾਰ ਡਾਟਾ (Month-Wise)',
     tabTransactions: 'ਖਰਚਾ ਲੌਗ',
     tabGrocery: 'ਸਮਾਰਟ ਰਾਸ਼ਨ ਅਤੇ ਗ੍ਰੋਸਰੀ ਮੈਨੇਜਰ',
     tabSips: 'ਐਸਆਈਪੀ ਅਤੇ ਨਿਵੇਸ਼',
@@ -547,6 +550,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Tabs
     tabDashboard: 'Overview & Analytics',
+    tabMonths: 'Har Month Ka Data (Month-Wise)',
     tabTransactions: 'Expense Log',
     tabGrocery: 'Smart Grocery Manager',
     tabSips: 'SIP & Investments',

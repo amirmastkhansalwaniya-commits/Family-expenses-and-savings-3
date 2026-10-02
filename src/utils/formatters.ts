@@ -46,26 +46,24 @@ export function formatMonthName(monthKey: string): string {
   return date.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 }
 
-export function calculateSettlements(expenses: Expense[]): SettlementSummary[] {
-  const totals: Record<FamilyMember, number> = {
-    'Amir Khan': 0,
-    'Angrej Singh': 0,
-    'Kajal': 0,
-    'Shahnaz': 0,
-    'Sonam': 0,
-  };
+export function calculateSettlements(expenses: Expense[], membersList: string[] = FAMILY_MEMBERS): SettlementSummary[] {
+  const totals: Record<string, number> = {};
+  membersList.forEach(m => { totals[m] = 0; });
 
   expenses.forEach(exp => {
     if (totals[exp.paidBy] !== undefined) {
       totals[exp.paidBy] += Number(exp.amount) || 0;
+    } else {
+      totals[exp.paidBy] = Number(exp.amount) || 0;
     }
   });
 
   const totalSpent = Object.values(totals).reduce((a, b) => a + b, 0);
-  const averageShare = FAMILY_MEMBERS.length > 0 ? totalSpent / FAMILY_MEMBERS.length : 0;
+  const activeMembersCount = membersList.length || 1;
+  const averageShare = totalSpent / activeMembersCount;
 
-  return FAMILY_MEMBERS.map(member => {
-    const paid = totals[member];
+  return membersList.map(member => {
+    const paid = totals[member] || 0;
     const net = paid - averageShare;
     return {
       member,
@@ -80,10 +78,10 @@ export const SAMPLE_SEED_EXPENSES: Omit<Expense, 'id'>[] = [
   {
     amount: 3850,
     category: 'Groceries',
-    paidBy: 'Amir Khan',
+    paidBy: 'Aamir Khan',
     date: new Date().toISOString().split('T')[0],
     notes: 'Monthly staples & dry fruits from BigBasket',
-    addedByMember: 'Amir Khan',
+    addedByMember: 'Aamir Khan',
   },
   {
     amount: 2400,
