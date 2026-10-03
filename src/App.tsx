@@ -35,7 +35,6 @@ import { FileText, X, Download } from 'lucide-react';
 import { Header } from './components/Header';
 import { ActiveMemberBar } from './components/ActiveMemberBar';
 import { DashboardView } from './components/DashboardView';
-import { MonthWiseDataView } from './components/MonthWiseDataView';
 import { TransactionHistoryLog } from './components/TransactionHistoryLog';
 import { AndroidGuideView } from './components/AndroidGuideView';
 import { AddExpenseModal } from './components/AddExpenseModal';
@@ -280,7 +279,7 @@ export default function App() {
   });
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'months' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'sips' | 'emis' | 'debts' | 'android-guide'>('dashboard');
 
   // 9:16 Aspect Ratio Mode toggle
   const [isRatio916, setIsRatio916] = useState<boolean>(() => {
@@ -2129,8 +2128,7 @@ export default function App() {
           allTimeMemberTotals={allTimeMemberTotals}
           allExpenses={expenses}
           selectedMonth={selectedMonth}
-          onMonthChange={handleSelectMonth}
-          onNavigateTab={setActiveTab}
+          onMonthChange={setSelectedMonth}
           memberBankAmounts={memberBankAmounts}
           onUpdateBankAmount={handleUpdateMemberBankAmount}
           theme={theme}
@@ -2178,30 +2176,6 @@ export default function App() {
               onOpenManageMembers={() => setIsManageMembersModalOpen(true)}
               isPdfModalOpen={isPdfModalOpen}
               setIsPdfModalOpen={setIsPdfModalOpen}
-            />
-          )}
-
-          {activeTab === 'months' && (
-            <MonthWiseDataView
-              expenses={expenses}
-              selectedMonth={selectedMonth}
-              onMonthChange={handleSelectMonth}
-              onNavigateTab={setActiveTab}
-              onOpenAddExpense={() => {
-                setEditingExpense(null);
-                setIsAddModalOpen(true);
-              }}
-              onEditExpense={(expense) => {
-                setEditingExpense(expense);
-                setIsAddModalOpen(true);
-              }}
-              onDeleteExpense={handleDeleteExpense}
-              familyMembers={familyMembers}
-              memberConfigs={memberConfigs}
-              memberBankAmounts={memberBankAmounts}
-              monthlyBudget={monthlyBudget}
-              language={language}
-              theme={theme}
             />
           )}
 
